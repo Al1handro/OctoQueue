@@ -2,7 +2,10 @@ module OctoQueue
 
 go 1.26.3
 
-require github.com/ilyakaznacheev/cleanenv v1.5.0
+require (
+	github.com/go-chi/chi/v5 v5.2.5
+	github.com/ilyakaznacheev/cleanenv v1.5.0
+)
 
 require (
 	github.com/mattn/go-colorable v0.1.14 // indirect

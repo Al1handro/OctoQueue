@@ -1,12 +1,19 @@
 package main
 
 import (
-	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"OctoQueue/internal/config"
+	"OctoQueue/internal/http-server/handlers"
+	"OctoQueue/internal/http-server/middleware/logger"
 	"OctoQueue/internal/lib/logger/handlers/slogpretty"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 )
 
 const (
@@ -22,9 +29,42 @@ func main() {
 
 	log.Info("Application started")
 
-	fmt.Print(cfg)
+	router := chi.NewRouter()
 
+	router.Use(middleware.RequestID)
+	router.Use(middleware.RealIP)
+	router.Use(logger.New(log))
+	router.Use(middleware.Recoverer)
+	router.Use(middleware.URLFormat)
 	
+	router.Get("/status", handlers.Status(log))
+	
+	log.Info("Starting HTTP server on :8080")
+	if err := http.ListenAndServe(":8080", router); err != nil {
+		log.Error("Failed to start HTTP server", "error", err)
+	}
+
+	done := make(chan os.Signal, 1)
+	signal.Notify(done, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+
+	srv := &http.Server{
+		Addr:         cfg.Adress,
+		Handler:      router,
+		ReadTimeout:  cfg.HttpServer.Timeout,
+		WriteTimeout: cfg.HttpServer.Timeout,
+		IdleTimeout:  cfg.HttpServer.IdleTimeout,
+	}
+
+	go func() {
+		if err := srv.ListenAndServe(); err != nil {
+			log.Error("failed to start server")
+		}
+	}()
+
+	log.Info("server started")
+
+	<-done
+	log.Info("stopping server")
 }
 
 func setupLogger(env string) *slog.Logger {
