@@ -10,7 +10,7 @@ import (
 
 func Status(log *slog.Logger) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		const op = "handlers.Status"
+		const op = "http-server.handlers.Status"
 
 		logger := log.With(
 			slog.String("op", op),

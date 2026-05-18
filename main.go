@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -11,6 +13,7 @@ import (
 	"OctoQueue/internal/http-server/handlers"
 	"OctoQueue/internal/http-server/middleware/logger"
 	"OctoQueue/internal/lib/logger/handlers/slogpretty"
+	"OctoQueue/internal/storage/pgsql"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -25,7 +28,18 @@ const (
 func main() {
 	cfg := config.MustLode()
 
+	dns := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
+		cfg.PsqlInfo.User, cfg.PsqlInfo.Password, cfg.PsqlInfo.Рost, cfg.PsqlInfo.Port, cfg.PsqlInfo.Dbname)
+
 	log := setupLogger(cfg.Env)
+
+	storage, err := pgsql.NewStorage(context.Background(), dns, log)
+	if err != nil {
+		log.Error("Failed to create storage", "error", err)
+		os.Exit(1)
+	}
+
+	_ = storage
 
 	log.Info("Application started")
 
@@ -36,9 +50,9 @@ func main() {
 	router.Use(logger.New(log))
 	router.Use(middleware.Recoverer)
 	router.Use(middleware.URLFormat)
-	
+
 	router.Get("/status", handlers.Status(log))
-	
+
 	log.Info("Starting HTTP server on :8080")
 	if err := http.ListenAndServe(":8080", router); err != nil {
 		log.Error("Failed to start HTTP server", "error", err)
