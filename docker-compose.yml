@@ -1,0 +1,11 @@
+services:
+  db:
+    image: postgres:17-alpine
+    restart: always
+    shm_size: 128mb
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: app
+    ports:
+      - "5432:5432"
