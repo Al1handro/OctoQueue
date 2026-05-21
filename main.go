@@ -35,7 +35,7 @@ func main() {
 
 	storage, err := pgsql.NewStorage(context.Background(), dns, log)
 	if err != nil {
-		log.Error("Failed to create storage", "error", err)
+		log.Error("Failed to create storage", "error", err.Error())
 		os.Exit(1)
 	}
 

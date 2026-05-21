@@ -26,13 +26,11 @@ func NewStorage(ctx context.Context, dsn string, log *slog.Logger) (*Storage, er
 		return nil, fmt.Errorf("%s: connect: %w", op, err)
 	}
 
-	err = pool.Ping(ctx)
-	if err != nil {
+	if err = pool.Ping(ctx); err != nil {
 		return nil, fmt.Errorf("%s: ping: %w", op, err)
 	}
 
 	log.Info("Successfully connected to PostgreSQL database")
-
 	log.Info("Initializing the database schema")
 
 	queries := []string{
@@ -47,130 +45,129 @@ func NewStorage(ctx context.Context, dsn string, log *slog.Logger) (*Storage, er
 
 		// Таблица tasks
 		`CREATE TABLE IF NOT EXISTS tasks (
-        id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        name           VARCHAR(255) NOT NULL,
-        type           VARCHAR(50)  NOT NULL CHECK (type IN ('http_call', 'shell', 'grpc')),
+			id             UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+			name           VARCHAR(255) NOT NULL,
+			type           VARCHAR(50)  NOT NULL CHECK (type IN ('http_call', 'shell', 'grpc')),
 
-        payload        BYTEA        NOT NULL,
-        payload_type   VARCHAR(100) NOT NULL,
-        schema_version INT          NOT NULL DEFAULT 1,
+			payload        JSONB        NOT NULL DEFAULT '{}',
 
-        schedule       VARCHAR(100),
-        timezone       VARCHAR(50)  NOT NULL DEFAULT 'UTC',
+			schedule       VARCHAR(100),
+			timezone       VARCHAR(50)  NOT NULL DEFAULT 'UTC',
 
-        status         VARCHAR(20)  NOT NULL DEFAULT 'pending'
-                       CHECK (status IN ('pending', 'running', 'completed', 'failed', 'cancelled')),
-        next_run_at    TIMESTAMPTZ,
-        last_run_at    TIMESTAMPTZ,
-        started_at     TIMESTAMPTZ,
+			status         VARCHAR(20)  NOT NULL DEFAULT 'pending'
+			               CHECK (status IN ('pending', 'running', 'completed', 'failed', 'cancelled')),
+			next_run_at    TIMESTAMPTZ,
+			last_run_at    TIMESTAMPTZ,
+			started_at     TIMESTAMPTZ,
 
-        retries        INT          NOT NULL DEFAULT 0,
-        max_retries    INT          NOT NULL DEFAULT 3,
-        retry_delay    INTERVAL     NOT NULL DEFAULT '1 minute',
-        timeout        INTERVAL     NOT NULL DEFAULT '30 seconds',
+			retries        INT          NOT NULL DEFAULT 0,
+			max_retries    INT          NOT NULL DEFAULT 3,
+			retry_delay    INTERVAL     NOT NULL DEFAULT '1 minute',
+			timeout        INTERVAL     NOT NULL DEFAULT '30 seconds',
 
-        target_host    VARCHAR(255),
+			target_host    VARCHAR(255),
 
-        tags           TEXT[]       NOT NULL DEFAULT '{}',
-        created_by     VARCHAR(100),
-        created_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-        updated_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-        deleted_at     TIMESTAMPTZ,
+			tags           TEXT[]       NOT NULL DEFAULT '{}',
+			created_by     VARCHAR(100),
+			created_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+			updated_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+			deleted_at     TIMESTAMPTZ,
 
-        CONSTRAINT chk_schedule CHECK (
-            schedule IS NULL OR schedule ~ '^(\*|[\d\-,/]+)\s+(\*|[\d\-,/]+)\s+(\*|[\d\-,/]+)\s+(\*|[\d\-,/]+)\s+(\*|[\d\-,/]+)$'
-        )
-    )`,
+			CONSTRAINT chk_schedule CHECK (
+				schedule IS NULL OR schedule ~ '^(\*|[\d\-,/]+)\s+(\*|[\d\-,/]+)\s+(\*|[\d\-,/]+)\s+(\*|[\d\-,/]+)\s+(\*|[\d\-,/]+)$'
+			)
+		)`,
 
 		// Индексы tasks
 		`CREATE INDEX IF NOT EXISTS idx_tasks_status
-        ON tasks(status) WHERE deleted_at IS NULL`,
+			ON tasks(status) WHERE deleted_at IS NULL`,
 
 		`CREATE INDEX IF NOT EXISTS idx_tasks_next_run
-        ON tasks(next_run_at) WHERE status = 'pending' AND deleted_at IS NULL`,
+			ON tasks(next_run_at) WHERE status = 'pending' AND deleted_at IS NULL`,
 
 		`CREATE INDEX IF NOT EXISTS idx_tasks_type
-        ON tasks(type) WHERE deleted_at IS NULL`,
+			ON tasks(type) WHERE deleted_at IS NULL`,
 
 		`CREATE INDEX IF NOT EXISTS idx_tasks_tags
-        ON tasks USING GIN(tags) WHERE deleted_at IS NULL`,
+			ON tasks USING GIN(tags) WHERE deleted_at IS NULL`,
 
 		`CREATE INDEX IF NOT EXISTS idx_tasks_created_at
-        ON tasks(created_at DESC)`,
+			ON tasks(created_at DESC)`,
 
 		`CREATE INDEX IF NOT EXISTS idx_tasks_target_host
-        ON tasks(target_host) WHERE deleted_at IS NULL`,
+			ON tasks(target_host) WHERE deleted_at IS NULL`,
+
+		// GIN-индекс по payload для поиска внутри JSONB
+		`CREATE INDEX IF NOT EXISTS idx_tasks_payload
+			ON tasks USING GIN(payload) WHERE deleted_at IS NULL`,
 
 		// Триггер updated_at для tasks
 		`DO $$ BEGIN
-        IF NOT EXISTS (
-            SELECT 1 FROM pg_trigger
-            WHERE tgname = 'trg_tasks_updated_at'
-        ) THEN
-            CREATE TRIGGER trg_tasks_updated_at
-                BEFORE UPDATE ON tasks
-                FOR EACH ROW
-                EXECUTE FUNCTION update_timestamp();
-        END IF;
-    END $$`,
+			IF NOT EXISTS (
+				SELECT 1 FROM pg_trigger
+				WHERE tgname = 'trg_tasks_updated_at'
+			) THEN
+				CREATE TRIGGER trg_tasks_updated_at
+					BEFORE UPDATE ON tasks
+					FOR EACH ROW
+					EXECUTE FUNCTION update_timestamp();
+			END IF;
+		END $$`,
 
 		// Таблица task_executions
 		`CREATE TABLE IF NOT EXISTS task_executions (
-        id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
-        task_id       UUID        NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+			id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+			task_id       UUID        NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
 
-        status        VARCHAR(20) NOT NULL DEFAULT 'running'
-                      CHECK (status IN ('running', 'success', 'failed', 'timeout', 'cancelled')),
-        attempt       INT         NOT NULL DEFAULT 1,
+			status        VARCHAR(20) NOT NULL DEFAULT 'running'
+			              CHECK (status IN ('running', 'success', 'failed', 'timeout', 'cancelled')),
+			attempt       INT         NOT NULL DEFAULT 1,
 
-        started_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        finished_at   TIMESTAMPTZ,
-        duration      INTERVAL,
+			started_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			finished_at   TIMESTAMPTZ,
+			duration      INTERVAL,
 
-        request       BYTEA,
-        request_type  VARCHAR(100),
-        response      BYTEA,
-        response_type VARCHAR(100),
+			request       JSONB,
+			response      JSONB,
 
-        error_code    VARCHAR(50),
-        error_msg     TEXT,
-        error_trace   TEXT,
+			error_code    VARCHAR(50),
+			error_msg     TEXT,
+			error_trace   TEXT,
 
-        worker_id     VARCHAR(100),
-        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )`,
+			worker_id     VARCHAR(100),
+			created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)`,
 
 		// Индексы task_executions
 		`CREATE INDEX IF NOT EXISTS idx_executions_task_id
-        ON task_executions(task_id)`,
+			ON task_executions(task_id)`,
 
 		`CREATE INDEX IF NOT EXISTS idx_executions_status
-        ON task_executions(status)`,
+			ON task_executions(status)`,
 
 		`CREATE INDEX IF NOT EXISTS idx_executions_started
-        ON task_executions(started_at DESC)`,
+			ON task_executions(started_at DESC)`,
 
 		`CREATE INDEX IF NOT EXISTS idx_executions_task_status
-        ON task_executions(task_id, status)`,
+			ON task_executions(task_id, status)`,
 
 		// Таблица task_locks
 		`CREATE TABLE IF NOT EXISTS task_locks (
-        id          SERIAL      PRIMARY KEY,
-        task_id     UUID        NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-        worker_id   VARCHAR(100) NOT NULL,
-        acquired_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        expires_at  TIMESTAMPTZ NOT NULL,
+			id          SERIAL       PRIMARY KEY,
+			task_id     UUID         NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+			worker_id   VARCHAR(100) NOT NULL,
+			acquired_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+			expires_at  TIMESTAMPTZ  NOT NULL,
 
-        CONSTRAINT uq_task_lock UNIQUE (task_id)
-    )`,
+			CONSTRAINT uq_task_lock UNIQUE (task_id)
+		)`,
 
-		// Индекс task_locks
 		`CREATE INDEX IF NOT EXISTS idx_locks_expires
-        ON task_locks(expires_at) WHERE expires_at < NOW()`,
+			ON task_locks(expires_at)`,
 	}
 
-	for _, query := range queries {
-		if _, err := pool.Exec(ctx, query); err != nil {
+	for _, q := range queries {
+		if _, err := pool.Exec(ctx, q); err != nil {
 			pool.Close()
 			return nil, fmt.Errorf("%s: init schema: %w", op, err)
 		}

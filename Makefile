@@ -8,3 +8,6 @@ down:
 
 seed:
 	@echo "Seeding database..."
+
+test:
+	go test ./... -v
