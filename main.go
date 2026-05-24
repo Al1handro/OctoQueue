@@ -39,7 +39,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	_ = storage
+	// _ = storage // TODO: Use storage in handlers
 
 	log.Info("Application started")
 
@@ -52,7 +52,13 @@ func main() {
 	router.Use(middleware.URLFormat)
 
 	router.Get("/status", handlers.Status(log))
-
+	router.Post("/tasks", handlers.CreateTask(log, storage))
+	router.Get("/tasks", handlers.ListTasks(log, storage))
+	router.Get("/tasks/{id}", handlers.GetTask(log, storage))
+	router.Patch("/tasks/{id}", handlers.UpdateTask(log, storage))
+	router.Delete("/tasks/{id}", handlers.DeleteTask(log, storage))
+	router.Get("/tasks/{id}/executions", handlers.GetTaskExecutions(log, storage))
+	
 	log.Info("Starting HTTP server on :8080")
 	if err := http.ListenAndServe(":8080", router); err != nil {
 		log.Error("Failed to start HTTP server", "error", err)
