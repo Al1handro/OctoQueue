@@ -13,6 +13,15 @@ type Storage struct {
 	pool *pgxpool.Pool
 }
 
+// Идеоматичней использовать методы, так как это не ломает инкапсуляцию
+func (s *Storage) Pool() *pgxpool.Pool {
+	return s.pool
+}
+
+func (s *Storage) Close() {
+	s.pool.Close()
+}
+
 func NewStorage(ctx context.Context, dsn string, log *slog.Logger) (*Storage, error) {
 	const op = "storage.pgsql.NewStorage"
 

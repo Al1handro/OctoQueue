@@ -12,7 +12,7 @@ import (
 func (s *Storage) CreateTask(ctx context.Context, p storage.CreateTaskParams) (*storage.Task, error) {
 	const op = "storage.pgsql.CreateTask"
 
-	row := s.pool.QueryRow(ctx, `
+	row := s.Pool().QueryRow(ctx, `
 		INSERT INTO tasks (
 			name, type, payload, schedule, timezone,
 			next_run_at, max_retries, tags, created_by, target_host
@@ -40,7 +40,7 @@ func (s *Storage) CreateTask(ctx context.Context, p storage.CreateTaskParams) (*
 func (s *Storage) GetTaskByID(ctx context.Context, id string) (*storage.Task, error) {
 	const op = "storage.pgsql.GetTaskByID"
 
-	row := s.pool.QueryRow(ctx, `
+	row := s.Pool().QueryRow(ctx, `
 		SELECT
 			id, name, type, payload, schedule, timezone,
 			status, next_run_at, last_run_at, started_at,
@@ -66,7 +66,7 @@ func (s *Storage) ListTasks(ctx context.Context, p storage.ListTasksParams) ([]*
 		p.Limit = 50
 	}
 
-	rows, err := s.pool.Query(ctx, `
+	rows, err := s.Pool().Query(ctx, `
 		SELECT
 			id, name, type, payload, schedule, timezone,
 			status, next_run_at, last_run_at, started_at,
@@ -101,7 +101,7 @@ func (s *Storage) ListTasks(ctx context.Context, p storage.ListTasksParams) ([]*
 func (s *Storage) UpdateTask(ctx context.Context, p storage.UpdateTaskParams) (*storage.Task, error) {
 	const op = "storage.pgsql.UpdateTask"
 
-	row := s.pool.QueryRow(ctx, `
+	row := s.Pool().QueryRow(ctx, `
 		UPDATE tasks SET
 			name        = COALESCE($2, name),
 			payload     = COALESCE($3, payload),
@@ -131,7 +131,7 @@ func (s *Storage) UpdateTask(ctx context.Context, p storage.UpdateTaskParams) (*
 func (s *Storage) UpdateTaskStatus(ctx context.Context, id, status string, nextRunAt *time.Time) error {
 	const op = "storage.pgsql.UpdateTaskStatus"
 
-	tag, err := s.pool.Exec(ctx, `
+	tag, err := s.Pool().Exec(ctx, `
 		UPDATE tasks SET
 			status      = $2,
 			next_run_at = $3,
@@ -152,7 +152,7 @@ func (s *Storage) UpdateTaskStatus(ctx context.Context, id, status string, nextR
 func (s *Storage) DeleteTask(ctx context.Context, id string) error {
 	const op = "storage.pgsql.DeleteTask"
 
-	tag, err := s.pool.Exec(ctx, `
+	tag, err := s.Pool().Exec(ctx, `
 		UPDATE tasks SET deleted_at = NOW()
 		WHERE id = $1 AND deleted_at IS NULL`,
 		id,
@@ -172,7 +172,7 @@ func (s *Storage) DeleteTask(ctx context.Context, id string) error {
 func (s *Storage) AcquirePendingTasks(ctx context.Context, workerID string, limit int) ([]*storage.Task, error) {
 	const op = "storage.pgsql.AcquirePendingTasks"
 
-	rows, err := s.pool.Query(ctx, `
+	rows, err := s.Pool().Query(ctx, `
 		WITH next_tasks AS (
 			SELECT id FROM tasks
 			WHERE status     = 'pending'
@@ -216,7 +216,7 @@ func (s *Storage) AcquirePendingTasks(ctx context.Context, workerID string, limi
 func (s *Storage) CreateExecution(ctx context.Context, p storage.CreateExecutionParams) (*storage.TaskExecution, error) {
 	const op = "storage.pgsql.CreateExecution"
 
-	row := s.pool.QueryRow(ctx, `
+	row := s.Pool().QueryRow(ctx, `
 		INSERT INTO task_executions (task_id, attempt, worker_id, request)
 		VALUES ($1, $2, $3, $4)
 		RETURNING
@@ -239,7 +239,7 @@ func (s *Storage) CreateExecution(ctx context.Context, p storage.CreateExecution
 func (s *Storage) FinishExecution(ctx context.Context, p storage.FinishExecutionParams) (*storage.TaskExecution, error) {
 	const op = "storage.pgsql.FinishExecution"
 
-	row := s.pool.QueryRow(ctx, `
+	row := s.Pool().QueryRow(ctx, `
 		UPDATE task_executions SET
 			status      = $2,
 			finished_at = NOW(),
@@ -273,7 +273,7 @@ func (s *Storage) ListExecutions(ctx context.Context, taskID string, limit int) 
 		limit = 20
 	}
 
-	rows, err := s.pool.Query(ctx, `
+	rows, err := s.Pool().Query(ctx, `
 		SELECT
 			id, task_id, status, attempt,
 			started_at, finished_at, duration,
@@ -306,7 +306,7 @@ func (s *Storage) ListExecutions(ctx context.Context, taskID string, limit int) 
 func (s *Storage) AcquireLock(ctx context.Context, taskID, workerID string, ttl time.Duration) (*storage.TaskLock, error) {
 	const op = "storage.pgsql.AcquireLock"
 
-	row := s.pool.QueryRow(ctx, `
+	row := s.Pool().QueryRow(ctx, `
 		INSERT INTO task_locks (task_id, worker_id, expires_at)
 		VALUES ($1, $2, NOW() + $3::interval)
 		ON CONFLICT (task_id) DO UPDATE
@@ -330,7 +330,7 @@ func (s *Storage) AcquireLock(ctx context.Context, taskID, workerID string, ttl 
 func (s *Storage) ReleaseLock(ctx context.Context, taskID, workerID string) error {
 	const op = "storage.pgsql.ReleaseLock"
 
-	tag, err := s.pool.Exec(ctx, `
+	tag, err := s.Pool().Exec(ctx, `
 		DELETE FROM task_locks
 		WHERE task_id = $1 AND worker_id = $2`,
 		taskID, workerID,
@@ -348,7 +348,7 @@ func (s *Storage) ReleaseLock(ctx context.Context, taskID, workerID string) erro
 func (s *Storage) CleanExpiredLocks(ctx context.Context) (int64, error) {
 	const op = "storage.pgsql.CleanExpiredLocks"
 
-	tag, err := s.pool.Exec(ctx, `DELETE FROM task_locks WHERE expires_at < NOW()`)
+	tag, err := s.Pool().Exec(ctx, `DELETE FROM task_locks WHERE expires_at < NOW()`)
 	if err != nil {
 		return 0, fmt.Errorf("%s: %w", op, err)
 	}

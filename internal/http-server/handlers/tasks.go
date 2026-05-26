@@ -76,7 +76,7 @@ func Status(log *slog.Logger) http.HandlerFunc {
 
 // CreateTask POST /tasks
 
-func CreateTask(log *slog.Logger, st storage.TaskCreator) http.HandlerFunc {
+func CreateTask(log *slog.Logger, st storage.TaskRepository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		const op = "handlers.CreateTask"
 		logger := log.With(slog.String("op", op), slog.String("request_id", middleware.GetReqID(r.Context())))
@@ -145,7 +145,7 @@ func CreateTask(log *slog.Logger, st storage.TaskCreator) http.HandlerFunc {
 
 // GetTask GET /tasks/{id}
 
-func GetTask(log *slog.Logger, st storage.TaskCreator) http.HandlerFunc {
+func GetTask(log *slog.Logger, st storage.TaskRepository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		const op = "handlers.GetTask"
 		logger := log.With(slog.String("op", op), slog.String("request_id", middleware.GetReqID(r.Context())))
@@ -169,7 +169,7 @@ func GetTask(log *slog.Logger, st storage.TaskCreator) http.HandlerFunc {
 
 // ListTasks GET /tasks?status=&type=&tags=&limit=&offset=
 
-func ListTasks(log *slog.Logger, st storage.TaskCreator) http.HandlerFunc {
+func ListTasks(log *slog.Logger, st storage.TaskRepository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		const op = "handlers.ListTasks"
 		logger := log.With(slog.String("op", op), slog.String("request_id", middleware.GetReqID(r.Context())))
@@ -217,7 +217,7 @@ func ListTasks(log *slog.Logger, st storage.TaskCreator) http.HandlerFunc {
 
 // UpdateTask PATCH /tasks/{id}
 
-func UpdateTask(log *slog.Logger, st storage.TaskCreator) http.HandlerFunc {
+func UpdateTask(log *slog.Logger, st storage.TaskWriter) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		const op = "handlers.UpdateTask"
 		logger := log.With(slog.String("op", op), slog.String("request_id", middleware.GetReqID(r.Context())))
@@ -268,7 +268,7 @@ func UpdateTask(log *slog.Logger, st storage.TaskCreator) http.HandlerFunc {
 
 // DeleteTask DELETE /tasks/{id}
 
-func DeleteTask(log *slog.Logger, st storage.TaskCreator) http.HandlerFunc {
+func DeleteTask(log *slog.Logger, st storage.TaskWriter) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		const op = "handlers.DeleteTask"
 		logger := log.With(slog.String("op", op), slog.String("request_id", middleware.GetReqID(r.Context())))
@@ -292,7 +292,7 @@ func DeleteTask(log *slog.Logger, st storage.TaskCreator) http.HandlerFunc {
 
 // GetTaskExecutions GET /tasks/{id}/executions?limit=
 
-func GetTaskExecutions(log *slog.Logger, st storage.TaskCreator) http.HandlerFunc {
+func GetTaskExecutions(log *slog.Logger, st storage.ExecutionTracker) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		const op = "handlers.GetTaskExecutions"
 		logger := log.With(slog.String("op", op), slog.String("request_id", middleware.GetReqID(r.Context())))
