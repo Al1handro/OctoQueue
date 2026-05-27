@@ -195,3 +195,164 @@ func TestStorage_GetTaskByID(t *testing.T) {
 	}
 }
 
+func TestStorage_ListTasks(t *testing.T) {
+	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
+
+	s, err := pgsql.NewStorage(context.Background(), testDSN, log)
+	if err != nil {
+		t.Fatalf("could not connect to test db: %v", err)
+	}
+
+
+	schedule := "0 0 * * *"
+	createdBy := "test-list"
+
+	created := make([]*storage.Task, 0)
+
+	create := func(name, taskType string, tags []string) *storage.Task {
+		t.Helper()
+
+		task, err := s.CreateTask(context.Background(), storage.CreateTaskParams{
+			Name:      name,
+			Type:      taskType,
+			Payload:   []byte(`{"url":"https://example.com/api","method":"GET"}`),
+			Schedule:  &schedule,
+			Timezone:  "UTC",
+			CreatedBy: &createdBy,
+			Tags:      tags,
+		})
+		if err != nil {
+			t.Fatalf("could not create task: %v", err)
+		}
+
+		created = append(created, task)
+
+		return task
+	}
+
+	taskA := create("Task A", "http_call", []string{"api", "test"})
+	taskB := create("Task B", "email", []string{"email"})
+	taskC := create("Task C", "http_call", []string{"api"})
+
+	t.Run("list all tasks", func(t *testing.T) {
+		got, err := s.ListTasks(context.Background(), storage.ListTasksParams{
+			Limit: 10,
+		})
+		if err != nil {
+			t.Fatalf("ListTasks() error = %v", err)
+		}
+
+		if len(got) < 3 {
+			t.Fatalf("expected at least 3 tasks, got %d", len(got))
+		}
+	})
+
+	t.Run("filter by type", func(t *testing.T) {
+		taskType := "http_call"
+
+		got, err := s.ListTasks(context.Background(), storage.ListTasksParams{
+			Type:  &taskType,
+			Limit: 10,
+		})
+		if err != nil {
+			t.Fatalf("ListTasks() error = %v", err)
+		}
+
+		if len(got) != 2 {
+			t.Fatalf("expected 2 tasks, got %d", len(got))
+		}
+
+		for _, task := range got {
+			if task.Type != "http_call" {
+				t.Errorf("unexpected task type: %s", task.Type)
+			}
+		}
+	})
+
+	t.Run("filter by tags", func(t *testing.T) {
+		got, err := s.ListTasks(context.Background(), storage.ListTasksParams{
+			Tags:  []string{"email"},
+			Limit: 10,
+		})
+		if err != nil {
+			t.Fatalf("ListTasks() error = %v", err)
+		}
+
+		if len(got) != 1 {
+			t.Fatalf("expected 1 task, got %d", len(got))
+		}
+
+		if got[0].ID != taskB.ID {
+			t.Fatalf("unexpected task returned")
+		}
+	})
+
+	t.Run("limit works", func(t *testing.T) {
+		got, err := s.ListTasks(context.Background(), storage.ListTasksParams{
+			Limit: 2,
+		})
+		if err != nil {
+			t.Fatalf("ListTasks() error = %v", err)
+		}
+
+		if len(got) != 2 {
+			t.Fatalf("expected 2 tasks, got %d", len(got))
+		}
+	})
+
+	t.Run("offset works", func(t *testing.T) {
+		first, err := s.ListTasks(context.Background(), storage.ListTasksParams{
+			Limit: 1,
+		})
+		if err != nil {
+			t.Fatalf("ListTasks() error = %v", err)
+		}
+
+		second, err := s.ListTasks(context.Background(), storage.ListTasksParams{
+			Limit:  1,
+			Offset: 1,
+		})
+		if err != nil {
+			t.Fatalf("ListTasks() error = %v", err)
+		}
+
+		if len(first) == 0 || len(second) == 0 {
+			t.Fatal("expected non-empty results")
+		}
+
+		if first[0].ID == second[0].ID {
+			t.Fatal("offset did not change result set")
+		}
+	})
+
+	t.Run("returns empty slice when no matches", func(t *testing.T) {
+		taskType := "unknown-type"
+
+		got, err := s.ListTasks(context.Background(), storage.ListTasksParams{
+			Type:  &taskType,
+			Limit: 10,
+		})
+		if err != nil {
+			t.Fatalf("ListTasks() error = %v", err)
+		}
+
+		if len(got) != 0 {
+			t.Fatalf("expected empty result, got %d tasks", len(got))
+		}
+	})
+
+	t.Cleanup(func() {
+		for _, task := range created {
+			_, _ = s.Pool().Exec(
+				context.Background(),
+				"DELETE FROM tasks WHERE id = $1",
+				task.ID,
+			)
+		}
+	})
+
+	_ = taskA
+	_ = taskC
+
+	// TODO: add more tests for filtering
+}
