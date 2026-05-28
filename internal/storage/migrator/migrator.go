@@ -32,20 +32,46 @@ func MustGetNewMigrator(sqlFiles embed.FS, dirName string) *Migrator {
 func (m *Migrator) ApplyMigrations(db *sql.DB) error {
 	driver, err := postgres.WithInstance(db, &postgres.Config{})
 	if err != nil {
-		return fmt.Errorf("unable to create db instance: %v", err)
+		return fmt.Errorf(
+			"unable to create db instance: %w",
+			err,
+		)
 	}
 
-	migrator, err := migrate.NewWithInstance("migration_embeded_sql_files", m.srcDriver, "psql_db", driver)
+	migrator, err := migrate.NewWithInstance(
+		"migration_embeded_sql_files",
+		m.srcDriver,
+		"psql_db",
+		driver,
+	)
 	if err != nil {
-		return fmt.Errorf("unable to create migration: %v", err)
+		return fmt.Errorf(
+			"unable to create migration instance: %w",
+			err,
+		)
 	}
 
 	defer func() {
-		migrator.Close()
+		_, _ = migrator.Close()
 	}()
 
-	if err = migrator.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
-		return fmt.Errorf("unable to apply migrations %v", err)
+	if err := migrator.Up(); err != nil {
+		if errors.Is(err, migrate.ErrNoChange) {
+			return nil
+		}
+
+		var dirty migrate.ErrDirty
+		if errors.As(err, &dirty) {
+			return fmt.Errorf(
+				"database is dirty at version %d",
+				dirty.Version,
+			)
+		}
+
+		return fmt.Errorf(
+			"unable to apply migrations: %w",
+			err,
+		)
 	}
 
 	return nil

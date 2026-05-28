@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"database/sql"
+	"embed"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -13,10 +15,13 @@ import (
 	"OctoQueue/internal/http-server/handlers"
 	"OctoQueue/internal/http-server/middleware/logger"
 	"OctoQueue/internal/lib/logger/handlers/slogpretty"
+	"OctoQueue/internal/lib/logger/sl"
+	"OctoQueue/internal/storage/migrator"
 	"OctoQueue/internal/storage/pgsql"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 const (
@@ -25,21 +30,39 @@ const (
 	envProd  = "prod"
 )
 
+//go:embed migrations
+var migrationsFS embed.FS
+
 func main() {
 	cfg := config.MustLode()
 
-	dns := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
-		cfg.PsqlInfo.User, cfg.PsqlInfo.Password, cfg.PsqlInfo.Рost, cfg.PsqlInfo.Port, cfg.PsqlInfo.Dbname)
-
 	log := setupLogger(cfg.Env)
 
-	storage, err := pgsql.NewStorage(context.Background(), dns, log)
+	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable",
+		cfg.PsqlInfo.User, cfg.PsqlInfo.Password, cfg.PsqlInfo.Рost, cfg.PsqlInfo.Port, cfg.PsqlInfo.Dbname)
+
+	db, err := sql.Open("pgx", dsn)
 	if err != nil {
-		log.Error("Failed to create storage", "error", err.Error())
+		log.Error("failed to open db for migrations", sl.Err(err))
 		os.Exit(1)
 	}
 
-	// _ = storage // TODO: Use storage in handlers
+	m := migrator.MustGetNewMigrator(migrationsFS, "migrations")
+	if err := m.ApplyMigrations(db); err != nil {
+		log.Error("failed to apply migrations", sl.Err(err))
+		os.Exit(1)
+	}
+	db.Close()
+
+	log.Info("Migrations applied successfully")
+
+	ctx := context.Background()
+	storage, err := pgsql.NewStorage(ctx, dsn, log)
+	if err != nil {
+		log.Error("failed to create storage", sl.Err(err))
+		os.Exit(1)
+	}
+	defer storage.Close()
 
 	log.Info("Application started")
 
@@ -58,14 +81,6 @@ func main() {
 	router.Patch("/tasks/{id}", handlers.UpdateTask(log, storage))
 	router.Delete("/tasks/{id}", handlers.DeleteTask(log, storage))
 	router.Get("/tasks/{id}/executions", handlers.GetTaskExecutions(log, storage))
-	
-	log.Info("Starting HTTP server on :8080")
-	if err := http.ListenAndServe(":8080", router); err != nil {
-		log.Error("Failed to start HTTP server", "error", err)
-	}
-
-	done := make(chan os.Signal, 1)
-	signal.Notify(done, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 
 	srv := &http.Server{
 		Addr:         cfg.Adress,
@@ -75,39 +90,36 @@ func main() {
 		IdleTimeout:  cfg.HttpServer.IdleTimeout,
 	}
 
+	done := make(chan os.Signal, 1)
+	signal.Notify(done, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+
 	go func() {
-		if err := srv.ListenAndServe(); err != nil {
-			log.Error("failed to start server")
+		log.Info("Starting HTTP server", slog.String("addr", cfg.Adress))
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Error("failed to start server", sl.Err(err))
 		}
 	}()
 
-	log.Info("server started")
-
+	log.Info("Server started")
 	<-done
-	log.Info("stopping server")
+	log.Info("Stopping server")
+
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Error("failed to shutdown server", sl.Err(err))
+	}
 }
 
 func setupLogger(env string) *slog.Logger {
-	var log *slog.Logger
-
 	switch env {
 	case envLocal:
-		log = setupPrettySlog()
+		return setupPrettySlog()
 	case envDev:
-		log = slog.New(
-			slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}),
-		)
+		return slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	case envProd:
-		log = slog.New(
-			slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}),
-		)
-	default: // If env config is invalid, set prod settings by default due to security
-		log = slog.New(
-			slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}),
-		)
+		return slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	default:
+		return slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	}
-
-	return log
 }
 
 func setupPrettySlog() *slog.Logger {
@@ -116,8 +128,5 @@ func setupPrettySlog() *slog.Logger {
 			Level: slog.LevelDebug,
 		},
 	}
-
-	handler := opts.NewPrettyHandler(os.Stdout)
-
-	return slog.New(handler)
+	return slog.New(opts.NewPrettyHandler(os.Stdout))
 }
