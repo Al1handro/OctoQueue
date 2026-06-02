@@ -65,9 +65,9 @@ INSERT INTO public.tasks (
     'hooks.slack.com', '{notifications,critical}'::text[], 'alert_service',
     NOW() - INTERVAL '2 days'
 ),
--- 5. Shell: отменена и помечена soft-delete
+-- 5. email: отменена и помечена soft-delete
 (
-    'Legacy Cleanup', 'shell',
+    'Legacy Cleanup', 'email',
     jsonb_build_object('command', 'rm -rf /tmp/old_logs/*'),
     NULL, 'UTC', 'cancelled',
     NULL, NULL, NULL,

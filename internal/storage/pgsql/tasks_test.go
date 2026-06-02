@@ -4,13 +4,20 @@ import (
 	"OctoQueue/internal/storage"
 	"OctoQueue/internal/storage/pgsql"
 	"context"
+	"io"
 	"log/slog"
 	"os"
 	"testing"
 	"time"
+
+	"github.com/google/go-cmp/cmp"
 )
 
-const testDSN = "postgres://postgres:password@localhost:5432?sslmode=disable"
+const testDSN = "postgres://postgres:password@localhost:5432/app?sslmode=disable"
+
+func ptr[T any](v T) *T {
+	return &v
+}
 
 func TestStorage_CreateTask(t *testing.T) {
 	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
@@ -19,6 +26,8 @@ func TestStorage_CreateTask(t *testing.T) {
 	if err != nil {
 		t.Fatalf("could not connect to test db: %v", err)
 	}
+
+	var CreatedIDs []string
 
 	schedule := "0 0 * * *"
 	createdBy := "test-user"
@@ -74,7 +83,7 @@ func TestStorage_CreateTask(t *testing.T) {
 				Name:      "Deploy v2",
 				Type:      "shell",
 				Payload:   []byte(`{"command":"kubectl apply -f deploy.yaml"}`),
-				Tags: []string{"deployment", "test"},
+				Tags:      []string{"deployment", "test"},
 				Timezone:  "UTC",
 				NextRunAt: func() *time.Time { t := time.Now().Add(5 * time.Minute); return &t }(),
 			},
@@ -108,20 +117,18 @@ func TestStorage_CreateTask(t *testing.T) {
 		},
 	}
 
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Cleanup(func() {
-				_, _ = s.Pool().Exec(context.Background(), "DELETE FROM tasks WHERE created_by = 'test-user' OR name LIKE '%test%'")
-			})
-
+			
 			got, err := s.CreateTask(context.Background(), tt.p)
+			
 			if err != nil {
 				if !tt.wantErr {
 					t.Errorf("CreateTask() unexpected error: %v", err)
 				}
 				return
 			}
+
 			if tt.wantErr {
 				t.Fatal("CreateTask() succeeded unexpectedly")
 			}
@@ -129,7 +136,13 @@ func TestStorage_CreateTask(t *testing.T) {
 			if tt.want != nil {
 				tt.want(t, got)
 			}
+
+			CreatedIDs = append(CreatedIDs, got.ID)
 		})
+	}
+
+	for _, id := range CreatedIDs {
+		_, _ = s.Pool().Exec(context.Background(), "DELETE FROM tasks WHERE id = $1", id)
 	}
 }
 
@@ -151,8 +164,9 @@ func TestStorage_GetTaskByID(t *testing.T) {
 		Schedule:  &schedule,
 		Timezone:  "UTC",
 		CreatedBy: &createdBy,
-		Tags:       []string{"test"},
+		Tags:      []string{"test"},
 	})
+
 	if err != nil {
 		t.Fatalf("could not create task for GetTaskByID test: %v", err)
 	}
@@ -203,7 +217,6 @@ func TestStorage_ListTasks(t *testing.T) {
 		t.Fatalf("could not connect to test db: %v", err)
 	}
 
-
 	schedule := "0 0 * * *"
 	createdBy := "test-list"
 
@@ -222,7 +235,7 @@ func TestStorage_ListTasks(t *testing.T) {
 			Tags:      tags,
 		})
 		if err != nil {
-			t.Fatalf("could not create task: %v", err)
+			t.Fatalf("could not create task (%q): %+v", taskType, err)
 		}
 
 		created = append(created, task)
@@ -254,6 +267,7 @@ func TestStorage_ListTasks(t *testing.T) {
 			Type:  &taskType,
 			Limit: 10,
 		})
+
 		if err != nil {
 			t.Fatalf("ListTasks() error = %v", err)
 		}
@@ -355,4 +369,357 @@ func TestStorage_ListTasks(t *testing.T) {
 	_ = taskC
 
 	// TODO: add more tests for filtering
+}
+
+func TestStorage_UpdateTask(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	tests := []struct {
+		name string
+		dsn  string
+
+		setup func(t *testing.T, s *pgsql.Storage) *storage.Task
+		p     storage.UpdateTaskParams
+
+		check   func(t *testing.T, before, got *storage.Task)
+		wantErr bool
+	}{
+		{
+			name: "update name and tags",
+			dsn:  testDSN,
+
+			setup: func(t *testing.T, s *pgsql.Storage) *storage.Task {
+				schedule := "0 0 * * *"
+				createdBy := "test"
+
+				create := func(name, taskType string, tags []string) *storage.Task {
+					t.Helper()
+
+					task, err := s.CreateTask(context.Background(), storage.CreateTaskParams{
+						Name:      name,
+						Type:      taskType,
+						Payload:   []byte(`{"url":"https://example.com/api","method":"GET"}`),
+						Schedule:  &schedule,
+						Timezone:  "UTC",
+						CreatedBy: &createdBy,
+						Tags:      tags,
+					})
+					if err != nil {
+						t.Fatalf("could not create task (%q): %+v", taskType, err)
+					}
+
+					return task
+				}
+
+				return create("old_name", "http_call", []string{"a", "b"})
+			},
+
+			p: storage.UpdateTaskParams{
+				Name: ptr("new_name"),
+				Tags: []string{"x", "y"},
+			},
+
+			check: func(t *testing.T, before, got *storage.Task) {
+				if got.Name != "new_name" {
+					t.Errorf("name = %s, want %s", got.Name, "new_name")
+				}
+
+				if !cmp.Equal(got.Tags, []string{"x", "y"}) {
+					t.Errorf("tags mismatch: %v", got.Tags)
+				}
+
+				// unchanged fields
+				if got.Type != before.Type {
+					t.Errorf("type changed: %s", got.Type)
+				}
+
+				if string(got.Payload) != string(before.Payload) {
+					t.Errorf("payload changed unexpectedly")
+				}
+
+				if got.Timezone != "UTC" {
+					t.Errorf("timezone changed: %s", got.Timezone)
+				}
+			},
+		},
+
+		{
+			name: "update only max retries does not touch others",
+			dsn:  testDSN,
+
+			setup: func(t *testing.T, s *pgsql.Storage) *storage.Task {
+				schedule := "0 0 * * *"
+				createdBy := "test"
+
+				task, err := s.CreateTask(context.Background(), storage.CreateTaskParams{
+					Name:      "keep",
+					Type:      "http_call",
+					Payload:   []byte(`{"x":1}`),
+					Schedule:  &schedule,
+					Timezone:  "UTC",
+					CreatedBy: &createdBy,
+					Tags:      []string{"keep"},
+				})
+				if err != nil {
+					t.Fatalf("create task: %v", err)
+				}
+
+				return task
+			},
+
+			p: storage.UpdateTaskParams{
+				MaxRetries: ptr(99),
+			},
+
+			check: func(t *testing.T, before, got *storage.Task) {
+				if got.MaxRetries != 99 {
+					t.Errorf("max_retries = %d", got.MaxRetries)
+				}
+
+				if got.Name != before.Name {
+					t.Errorf("name changed unexpectedly")
+				}
+
+				if got.Tags[0] != "keep" {
+					t.Errorf("tags changed unexpectedly")
+				}
+			},
+		},
+
+		{
+			name: "task not found",
+			dsn:  testDSN,
+
+			p: storage.UpdateTaskParams{
+				ID:   "00000000-0000-0000-0000-000000000000",
+				Name: ptr("x"),
+			},
+
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			s, err := pgsql.NewStorage(ctx, tt.dsn, log)
+			if err != nil {
+				t.Fatalf("new storage: %v", err)
+			}
+
+			var before *storage.Task
+			if tt.setup != nil {
+				before = tt.setup(t, s)
+				tt.p.ID = before.ID
+			}
+
+			got, err := s.UpdateTask(ctx, tt.p)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("UpdateTask error: %v", err)
+			}
+
+			if tt.check != nil {
+				tt.check(t, before, got)
+			}
+		})
+	}
+}
+
+func TestStorage_UpdateTaskStatus(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	tests := []struct {
+		name string
+		dsn  string
+
+		setup func(t *testing.T, s *pgsql.Storage) (id string)
+
+		status    string
+		nextRunAt *time.Time
+
+		check func(t *testing.T, before *storage.Task, after *storage.Task)
+
+		wantErr bool
+	}{
+		{
+			name: "set running status does not touch last_run_at",
+			dsn:  testDSN,
+
+			setup: func(t *testing.T, s *pgsql.Storage) string {
+				schedule := "0 0 * * *"
+				createdBy := "test"
+
+				task, err := s.CreateTask(ctx, storage.CreateTaskParams{
+					Name:      "t1",
+					Type:      "http_call",
+					Payload:   []byte(`{}`),
+					Schedule:  &schedule,
+					Timezone:  "UTC",
+					CreatedBy: &createdBy,
+					Tags:      []string{"a"},
+				})
+				if err != nil {
+					t.Fatalf("create: %v", err)
+				}
+				return task.ID
+			},
+
+			status:    "running",
+			nextRunAt: ptrTime(time.Now().Add(time.Hour)),
+
+			check: func(t *testing.T, before, after *storage.Task) {
+				if after.Status != "running" {
+					t.Errorf("status = %s", after.Status)
+				}
+				if after.LastRunAt != before.LastRunAt {
+					t.Errorf("last_run_at changed unexpectedly")
+				}
+			},
+		},
+
+		{
+			name: "completed sets last_run_at",
+			dsn:  testDSN,
+
+			setup: func(t *testing.T, s *pgsql.Storage) string {
+				task, err := s.CreateTask(ctx, storage.CreateTaskParams{
+					Name:     "t2",
+					Type:     "http_call",
+					Payload:  []byte(`{}`),
+					Tags: []string{"a"},
+					Timezone: "UTC",
+				})
+				if err != nil {
+					t.Fatalf("create: %v", err)
+				}
+				return task.ID
+			},
+
+			status:    "completed",
+			nextRunAt: nil,
+
+			check: func(t *testing.T, before, after *storage.Task) {
+				if after.Status != "completed" {
+					t.Errorf("status = %s", after.Status)
+				}
+
+				if after.LastRunAt == nil {
+					t.Fatal("expected last_run_at to be set")
+				}
+
+				if after.LastRunAt.Before(before.CreatedAt) {
+					t.Errorf("last_run_at seems invalid")
+				}
+			},
+		},
+
+		{
+			name: "failed sets last_run_at",
+			dsn:  testDSN,
+
+			setup: func(t *testing.T, s *pgsql.Storage) string {
+				task, err := s.CreateTask(ctx, storage.CreateTaskParams{
+					Name:     "t3",
+					Type:     "http_call",
+					Payload:  []byte(`{}`),
+					Tags:     []string{"a"},
+					Timezone: "UTC",
+				})
+				if err != nil {
+					t.Fatalf("create: %v", err)
+				}
+				return task.ID
+			},
+
+			status: "failed",
+			nextRunAt: nil,
+
+			check: func(t *testing.T, before, after *storage.Task) {
+				if after.Status != "failed" {
+					t.Errorf("status = %s", after.Status)
+				}
+				if after.LastRunAt == nil {
+					t.Fatal("expected last_run_at set")
+				}
+			},
+		},
+
+		{
+			name: "not found task returns error",
+			dsn:  testDSN,
+
+			setup: func(t *testing.T, s *pgsql.Storage) string {
+				return "00000000-0000-0000-0000-000000000000"
+			},
+
+			status:    "running",
+			nextRunAt: nil,
+
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			s, err := pgsql.NewStorage(ctx, tt.dsn, log)
+			if err != nil {
+				t.Fatalf("new storage: %v", err)
+			}
+
+			id := tt.setup(t, s)
+
+			// fetch before state
+			before, err := s.GetTaskByID(ctx, id)
+			if err != nil {
+				t.Fatalf("get before: %v", err)
+			}
+
+			err = s.UpdateTaskStatus(ctx, id, tt.status, tt.nextRunAt)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("expected error, got nil")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("UpdateTaskStatus error: %v", err)
+			}
+
+			after, err := s.GetTaskByID(ctx, id)
+			if err != nil {
+				t.Fatalf("get after: %v", err)
+			}
+
+			if tt.check != nil {
+				tt.check(t, before, after)
+			}
+		})
+	}
+}
+
+func ptrTime(t time.Time) *time.Time {
+	return &t
 }
