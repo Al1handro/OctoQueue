@@ -6,11 +6,11 @@ import (
 	"context"
 	"io"
 	"log/slog"
-	"os"
 	"testing"
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/stretchr/testify/require"
 )
 
 const testDSN = "postgres://postgres:password@localhost:5432/app?sslmode=disable"
@@ -20,7 +20,7 @@ func ptr[T any](v T) *T {
 }
 
 func TestStorage_CreateTask(t *testing.T) {
-	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	s, err := pgsql.NewStorage(context.Background(), testDSN, log)
 	if err != nil {
@@ -119,9 +119,9 @@ func TestStorage_CreateTask(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			
+
 			got, err := s.CreateTask(context.Background(), tt.p)
-			
+
 			if err != nil {
 				if !tt.wantErr {
 					t.Errorf("CreateTask() unexpected error: %v", err)
@@ -147,7 +147,7 @@ func TestStorage_CreateTask(t *testing.T) {
 }
 
 func TestStorage_GetTaskByID(t *testing.T) {
-	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	s, err := pgsql.NewStorage(context.Background(), testDSN, log)
 	if err != nil {
@@ -210,7 +210,7 @@ func TestStorage_GetTaskByID(t *testing.T) {
 }
 
 func TestStorage_ListTasks(t *testing.T) {
-	log := slog.New(slog.NewTextHandler(os.Stdout, nil))
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	s, err := pgsql.NewStorage(context.Background(), testDSN, log)
 	if err != nil {
@@ -398,7 +398,7 @@ func TestStorage_UpdateTask(t *testing.T) {
 				create := func(name, taskType string, tags []string) *storage.Task {
 					t.Helper()
 
-					task, err := s.CreateTask(context.Background(), storage.CreateTaskParams{
+					task, err := s.CreateTask(t.Context(), storage.CreateTaskParams{
 						Name:      name,
 						Type:      taskType,
 						Payload:   []byte(`{"url":"https://example.com/api","method":"GET"}`),
@@ -454,7 +454,7 @@ func TestStorage_UpdateTask(t *testing.T) {
 				schedule := "0 0 * * *"
 				createdBy := "test"
 
-				task, err := s.CreateTask(context.Background(), storage.CreateTaskParams{
+				task, err := s.CreateTask(t.Context(), storage.CreateTaskParams{
 					Name:      "keep",
 					Type:      "http_call",
 					Payload:   []byte(`{"x":1}`),
@@ -542,7 +542,6 @@ func TestStorage_UpdateTask(t *testing.T) {
 func TestStorage_UpdateTaskStatus(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	tests := []struct {
@@ -566,7 +565,7 @@ func TestStorage_UpdateTaskStatus(t *testing.T) {
 				schedule := "0 0 * * *"
 				createdBy := "test"
 
-				task, err := s.CreateTask(ctx, storage.CreateTaskParams{
+				task, err := s.CreateTask(t.Context(), storage.CreateTaskParams{
 					Name:      "t1",
 					Type:      "http_call",
 					Payload:   []byte(`{}`),
@@ -599,11 +598,11 @@ func TestStorage_UpdateTaskStatus(t *testing.T) {
 			dsn:  testDSN,
 
 			setup: func(t *testing.T, s *pgsql.Storage) string {
-				task, err := s.CreateTask(ctx, storage.CreateTaskParams{
+				task, err := s.CreateTask(t.Context(), storage.CreateTaskParams{
 					Name:     "t2",
 					Type:     "http_call",
 					Payload:  []byte(`{}`),
-					Tags: []string{"a"},
+					Tags:     []string{"a"},
 					Timezone: "UTC",
 				})
 				if err != nil {
@@ -635,7 +634,7 @@ func TestStorage_UpdateTaskStatus(t *testing.T) {
 			dsn:  testDSN,
 
 			setup: func(t *testing.T, s *pgsql.Storage) string {
-				task, err := s.CreateTask(ctx, storage.CreateTaskParams{
+				task, err := s.CreateTask(t.Context(), storage.CreateTaskParams{
 					Name:     "t3",
 					Type:     "http_call",
 					Payload:  []byte(`{}`),
@@ -648,7 +647,7 @@ func TestStorage_UpdateTaskStatus(t *testing.T) {
 				return task.ID
 			},
 
-			status: "failed",
+			status:    "failed",
 			nextRunAt: nil,
 
 			check: func(t *testing.T, before, after *storage.Task) {
@@ -660,29 +659,13 @@ func TestStorage_UpdateTaskStatus(t *testing.T) {
 				}
 			},
 		},
-
-		{
-			name: "not found task returns error",
-			dsn:  testDSN,
-
-			setup: func(t *testing.T, s *pgsql.Storage) string {
-				return "00000000-0000-0000-0000-000000000000"
-			},
-
-			status:    "running",
-			nextRunAt: nil,
-
-			wantErr: true,
-		},
 	}
 
 	for _, tt := range tests {
 		tt := tt
 
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			s, err := pgsql.NewStorage(ctx, tt.dsn, log)
+			s, err := pgsql.NewStorage(t.Context(), tt.dsn, log)
 			if err != nil {
 				t.Fatalf("new storage: %v", err)
 			}
@@ -690,12 +673,12 @@ func TestStorage_UpdateTaskStatus(t *testing.T) {
 			id := tt.setup(t, s)
 
 			// fetch before state
-			before, err := s.GetTaskByID(ctx, id)
+			before, err := s.GetTaskByID(t.Context(), id)
 			if err != nil {
 				t.Fatalf("get before: %v", err)
 			}
 
-			err = s.UpdateTaskStatus(ctx, id, tt.status, tt.nextRunAt)
+			err = s.UpdateTaskStatus(t.Context(), id, tt.status, tt.nextRunAt)
 
 			if tt.wantErr {
 				if err == nil {
@@ -708,7 +691,7 @@ func TestStorage_UpdateTaskStatus(t *testing.T) {
 				t.Fatalf("UpdateTaskStatus error: %v", err)
 			}
 
-			after, err := s.GetTaskByID(ctx, id)
+			after, err := s.GetTaskByID(t.Context(), id)
 			if err != nil {
 				t.Fatalf("get after: %v", err)
 			}
@@ -718,8 +701,84 @@ func TestStorage_UpdateTaskStatus(t *testing.T) {
 			}
 		})
 	}
-}
+} //TODO: DELETE from tasks where id = ...
 
 func ptrTime(t time.Time) *time.Time {
 	return &t
 }
+
+func TestStorage_DeleteTask(t *testing.T) {
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	tests := []struct {
+		name    string
+		dsn     string
+		log     *slog.Logger
+		setup   func(*testing.T, *pgsql.Storage) string
+		wantErr bool
+	}{
+		{
+			name: "delete existing task",
+			dsn:  testDSN,
+			log:  log,
+			setup: func(t *testing.T, s *pgsql.Storage) string {
+				task, err := s.CreateTask(t.Context(), storage.CreateTaskParams{
+					Name:     "to be deleted",
+					Type:     "http_call",
+					Payload:  []byte(`{}`),
+					Tags:     []string{"test"},
+					Timezone: "UTC",
+				})
+				if err != nil {
+					t.Fatalf("create task: %v", err)
+				}
+				return task.ID
+			},
+			wantErr: false,
+		},
+		{
+			name: "delete not existing task",
+			dsn:  testDSN,
+			log:  log,
+			setup: func(t *testing.T, s *pgsql.Storage) string {
+				return "00000000-0000-0000-0000-000000000000"
+			},
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s, err := pgsql.NewStorage(t.Context(), tt.dsn, tt.log)
+			if err != nil {
+				t.Fatalf("could not construct receiver type: %v", err)
+			}
+
+			id := tt.setup(t, s)
+
+			gotErr := s.DeleteTask(t.Context(), id)
+			if gotErr != nil {
+				if !tt.wantErr {
+					t.Errorf("DeleteTask() failed: %v", gotErr)
+				}
+				return
+			}
+
+			_, err = s.GetTaskByID(t.Context(), id)
+			require.Error(t, err)
+
+			if !tt.wantErr {
+				require.Contains(t, err.Error(), "no rows in result set")
+			}
+		})
+	}
+}
+
+// 			if tt.wantErr {
+// 				t.Fatal("DeleteTask() succeeded unexpectedly")
+// 			}
+// 		})
+// 	}
+// }
+
+
+// TODO: add NewTestStorage t.Helper() 

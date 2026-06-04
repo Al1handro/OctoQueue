@@ -133,10 +133,15 @@ func (s *Storage) UpdateTaskStatus(ctx context.Context, id, status string, nextR
 
 	tag, err := s.Pool().Exec(ctx, `
 		UPDATE tasks SET
-			status      = $2,
+			status = $2,
 			next_run_at = $3,
-			last_run_at = CASE WHEN $2 IN ('completed', 'failed') THEN NOW() ELSE last_run_at END
-		WHERE id = $1 AND deleted_at IS NULL`,
+			last_run_at = CASE
+				WHEN CAST($2 AS varchar(20)) IN ('completed', 'failed')
+				THEN NOW()
+				ELSE last_run_at
+			END
+		WHERE id = $1
+		AND deleted_at IS NULL`,
 		id, status, nextRunAt,
 	)
 	if err != nil {
