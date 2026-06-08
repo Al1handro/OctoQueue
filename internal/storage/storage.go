@@ -38,6 +38,20 @@ type LockManager interface {
 	CleanExpiredLocks(ctx context.Context) (int64, error)
 }
 
+type UserRepository interface {
+	Create(ctx context.Context, user *domain.User) error
+	GetByEmail(ctx context.Context, email string) (*domain.User, error)
+	GetByID(ctx context.Context, id uuid.UUID) (*domain.User, error)
+}
+
+type User struct {
+	ID        uuid.UUID `json:"id"`
+	Email     string    `json:"email"`
+	Password  string    `json:"-"`
+	Role      Role      `json:"role"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
 type Task struct {
 	ID         string
 	Name       string
