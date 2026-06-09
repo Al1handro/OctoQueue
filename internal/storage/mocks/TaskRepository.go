@@ -3,7 +3,7 @@
 package mocks
 
 import (
-	storage "OctoQueue/internal/storage"
+	domain "OctoQueue/internal/domain"
 	context "context"
 
 	mock "github.com/stretchr/testify/mock"
@@ -15,27 +15,27 @@ type TaskRepository struct {
 }
 
 // CreateTask provides a mock function with given fields: ctx, p
-func (_m *TaskRepository) CreateTask(ctx context.Context, p storage.CreateTaskParams) (*storage.Task, error) {
+func (_m *TaskRepository) CreateTask(ctx context.Context, p domain.CreateTaskParams) (*domain.Task, error) {
 	ret := _m.Called(ctx, p)
 
 	if len(ret) == 0 {
 		panic("no return value specified for CreateTask")
 	}
 
-	var r0 *storage.Task
+	var r0 *domain.Task
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, storage.CreateTaskParams) (*storage.Task, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, domain.CreateTaskParams) (*domain.Task, error)); ok {
 		return rf(ctx, p)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, storage.CreateTaskParams) *storage.Task); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, domain.CreateTaskParams) *domain.Task); ok {
 		r0 = rf(ctx, p)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*storage.Task)
+			r0 = ret.Get(0).(*domain.Task)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, storage.CreateTaskParams) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, domain.CreateTaskParams) error); ok {
 		r1 = rf(ctx, p)
 	} else {
 		r1 = ret.Error(1)
@@ -45,23 +45,23 @@ func (_m *TaskRepository) CreateTask(ctx context.Context, p storage.CreateTaskPa
 }
 
 // GetTaskByID provides a mock function with given fields: ctx, id
-func (_m *TaskRepository) GetTaskByID(ctx context.Context, id string) (*storage.Task, error) {
+func (_m *TaskRepository) GetTaskByID(ctx context.Context, id string) (*domain.Task, error) {
 	ret := _m.Called(ctx, id)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetTaskByID")
 	}
 
-	var r0 *storage.Task
+	var r0 *domain.Task
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string) (*storage.Task, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string) (*domain.Task, error)); ok {
 		return rf(ctx, id)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string) *storage.Task); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string) *domain.Task); ok {
 		r0 = rf(ctx, id)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*storage.Task)
+			r0 = ret.Get(0).(*domain.Task)
 		}
 	}
 
@@ -75,27 +75,27 @@ func (_m *TaskRepository) GetTaskByID(ctx context.Context, id string) (*storage.
 }
 
 // ListTasks provides a mock function with given fields: ctx, p
-func (_m *TaskRepository) ListTasks(ctx context.Context, p storage.ListTasksParams) ([]*storage.Task, error) {
+func (_m *TaskRepository) ListTasks(ctx context.Context, p domain.ListTasksParams) ([]*domain.Task, error) {
 	ret := _m.Called(ctx, p)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ListTasks")
 	}
 
-	var r0 []*storage.Task
+	var r0 []*domain.Task
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, storage.ListTasksParams) ([]*storage.Task, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, domain.ListTasksParams) ([]*domain.Task, error)); ok {
 		return rf(ctx, p)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, storage.ListTasksParams) []*storage.Task); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, domain.ListTasksParams) []*domain.Task); ok {
 		r0 = rf(ctx, p)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]*storage.Task)
+			r0 = ret.Get(0).([]*domain.Task)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, storage.ListTasksParams) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, domain.ListTasksParams) error); ok {
 		r1 = rf(ctx, p)
 	} else {
 		r1 = ret.Error(1)

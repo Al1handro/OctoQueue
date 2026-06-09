@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"time"
 
+	"OctoQueue/internal/domain"
 	"OctoQueue/internal/storage"
-	"github.com/golang-jwt/jwt/v5"
+
+	// "github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -26,7 +28,7 @@ func (s *AuthService) Register(ctx context.Context, email, password string, role
 		return nil, err
 	}
 	u := &domain.User{
-		ID:        uuid.New(),
+		ID:        string(uuid.New()),
 		Email:     email,
 		Password:  string(hash),
 		Role:      role,
@@ -50,12 +52,12 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (string
 }
 
 // TODO: UUID необходимо получить из бд, т.к. в Postgres есть функция gen_random_uuid()
-func (s *AuthService) generateToken(userID uuid.UUID, role domain.Role) (string, error) {
-	claims := jwt.MapClaims{
-		"user_id": userID.String(),
-		"role":    string(role),
-		"exp":     time.Now().Add(24 * time.Hour).Unix(),
-	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString([]byte(s.jwtSecret))
-}
+// func (s *AuthService) generateToken(userID string, role domain.Role) (string, error) {
+// 	claims := jwt.MapClaims{
+// 		"user_id": userID.String(),
+// 		"role":    string(role),
+// 		"exp":     time.Now().Add(24 * time.Hour).Unix(),
+// 	}
+// 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+// 	return token.SignedString([]byte(s.jwtSecret))
+// }

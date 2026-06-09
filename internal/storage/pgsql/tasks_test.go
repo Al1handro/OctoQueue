@@ -1,7 +1,7 @@
 package pgsql_test
 
 import (
-	"OctoQueue/internal/storage"
+	"OctoQueue/internal/domain"
 	"OctoQueue/internal/storage/pgsql"
 	"context"
 	"io"
@@ -35,13 +35,13 @@ func TestStorage_CreateTask(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		p       storage.CreateTaskParams
-		want    func(t *testing.T, got *storage.Task)
+		p       domain.CreateTaskParams
+		want    func(t *testing.T, got *domain.Task)
 		wantErr bool
 	}{
 		{
 			name: "successful creation of http_call task",
-			p: storage.CreateTaskParams{
+			p: domain.CreateTaskParams{
 				Name:       "Daily backup",
 				Type:       "http_call",
 				Payload:    []byte(`{"url":"https://example.com/api","method":"POST"}`),
@@ -52,7 +52,7 @@ func TestStorage_CreateTask(t *testing.T) {
 				CreatedBy:  &createdBy,
 				TargetHost: &targetHost,
 			},
-			want: func(t *testing.T, got *storage.Task) {
+			want: func(t *testing.T, got *domain.Task) {
 				t.Helper()
 				if got.ID == "" {
 					t.Error("expected non-empty ID")
@@ -79,7 +79,7 @@ func TestStorage_CreateTask(t *testing.T) {
 		},
 		{
 			name: "one-time task with run_at",
-			p: storage.CreateTaskParams{
+			p: domain.CreateTaskParams{
 				Name:      "Deploy v2",
 				Type:      "shell",
 				Payload:   []byte(`{"command":"kubectl apply -f deploy.yaml"}`),
@@ -87,7 +87,7 @@ func TestStorage_CreateTask(t *testing.T) {
 				Timezone:  "UTC",
 				NextRunAt: func() *time.Time { t := time.Now().Add(5 * time.Minute); return &t }(),
 			},
-			want: func(t *testing.T, got *storage.Task) {
+			want: func(t *testing.T, got *domain.Task) {
 				t.Helper()
 				if got.NextRunAt == nil {
 					t.Error("expected non-nil NextRunAt")
@@ -99,7 +99,7 @@ func TestStorage_CreateTask(t *testing.T) {
 		},
 		{
 			name: "An empty name is an error.",
-			p: storage.CreateTaskParams{
+			p: domain.CreateTaskParams{
 				Name:    "",
 				Type:    "http_call",
 				Payload: []byte(`{}`),
@@ -108,7 +108,7 @@ func TestStorage_CreateTask(t *testing.T) {
 		},
 		{
 			name: "An invalid type is an error.",
-			p: storage.CreateTaskParams{
+			p: domain.CreateTaskParams{
 				Name:    "Bad task",
 				Type:    "unknown_type",
 				Payload: []byte(`{}`),
@@ -157,7 +157,7 @@ func TestStorage_GetTaskByID(t *testing.T) {
 	schedule := "0 0 * * *"
 	createdBy := "test-get-by-id"
 
-	created, err := s.CreateTask(context.Background(), storage.CreateTaskParams{
+	created, err := s.CreateTask(context.Background(), domain.CreateTaskParams{
 		Name:      "Get task by ID",
 		Type:      "http_call",
 		Payload:   []byte(`{"url":"https://example.com/api","method":"GET"}`),
@@ -220,12 +220,12 @@ func TestStorage_ListTasks(t *testing.T) {
 	schedule := "0 0 * * *"
 	createdBy := "test-list"
 
-	created := make([]*storage.Task, 0)
+	created := make([]*domain.Task, 0)
 
-	create := func(name, taskType string, tags []string) *storage.Task {
+	create := func(name, taskType string, tags []string) *domain.Task {
 		t.Helper()
 
-		task, err := s.CreateTask(context.Background(), storage.CreateTaskParams{
+		task, err := s.CreateTask(context.Background(), domain.CreateTaskParams{
 			Name:      name,
 			Type:      taskType,
 			Payload:   []byte(`{"url":"https://example.com/api","method":"GET"}`),
@@ -248,7 +248,7 @@ func TestStorage_ListTasks(t *testing.T) {
 	taskC := create("Task C", "http_call", []string{"api"})
 
 	t.Run("list all tasks", func(t *testing.T) {
-		got, err := s.ListTasks(context.Background(), storage.ListTasksParams{
+		got, err := s.ListTasks(context.Background(), domain.ListTasksParams{
 			Limit: 10,
 		})
 		if err != nil {
@@ -263,7 +263,7 @@ func TestStorage_ListTasks(t *testing.T) {
 	t.Run("filter by type", func(t *testing.T) {
 		taskType := "http_call"
 
-		got, err := s.ListTasks(context.Background(), storage.ListTasksParams{
+		got, err := s.ListTasks(context.Background(), domain.ListTasksParams{
 			Type:  &taskType,
 			Limit: 10,
 		})
@@ -284,7 +284,7 @@ func TestStorage_ListTasks(t *testing.T) {
 	})
 
 	t.Run("filter by tags", func(t *testing.T) {
-		got, err := s.ListTasks(context.Background(), storage.ListTasksParams{
+		got, err := s.ListTasks(context.Background(), domain.ListTasksParams{
 			Tags:  []string{"email"},
 			Limit: 10,
 		})
@@ -302,7 +302,7 @@ func TestStorage_ListTasks(t *testing.T) {
 	})
 
 	t.Run("limit works", func(t *testing.T) {
-		got, err := s.ListTasks(context.Background(), storage.ListTasksParams{
+		got, err := s.ListTasks(context.Background(), domain.ListTasksParams{
 			Limit: 2,
 		})
 		if err != nil {
@@ -315,14 +315,14 @@ func TestStorage_ListTasks(t *testing.T) {
 	})
 
 	t.Run("offset works", func(t *testing.T) {
-		first, err := s.ListTasks(context.Background(), storage.ListTasksParams{
+		first, err := s.ListTasks(context.Background(), domain.ListTasksParams{
 			Limit: 1,
 		})
 		if err != nil {
 			t.Fatalf("ListTasks() error = %v", err)
 		}
 
-		second, err := s.ListTasks(context.Background(), storage.ListTasksParams{
+		second, err := s.ListTasks(context.Background(), domain.ListTasksParams{
 			Limit:  1,
 			Offset: 1,
 		})
@@ -342,7 +342,7 @@ func TestStorage_ListTasks(t *testing.T) {
 	t.Run("returns empty slice when no matches", func(t *testing.T) {
 		taskType := "unknown-type"
 
-		got, err := s.ListTasks(context.Background(), storage.ListTasksParams{
+		got, err := s.ListTasks(context.Background(), domain.ListTasksParams{
 			Type:  &taskType,
 			Limit: 10,
 		})
@@ -381,24 +381,24 @@ func TestStorage_UpdateTask(t *testing.T) {
 		name string
 		dsn  string
 
-		setup func(t *testing.T, s *pgsql.Storage) *storage.Task
-		p     storage.UpdateTaskParams
+		setup func(t *testing.T, s *pgsql.Storage) *domain.Task
+		p     domain.UpdateTaskParams
 
-		check   func(t *testing.T, before, got *storage.Task)
+		check   func(t *testing.T, before, got *domain.Task)
 		wantErr bool
 	}{
 		{
 			name: "update name and tags",
 			dsn:  testDSN,
 
-			setup: func(t *testing.T, s *pgsql.Storage) *storage.Task {
+			setup: func(t *testing.T, s *pgsql.Storage) *domain.Task {
 				schedule := "0 0 * * *"
 				createdBy := "test"
 
-				create := func(name, taskType string, tags []string) *storage.Task {
+				create := func(name, taskType string, tags []string) *domain.Task {
 					t.Helper()
 
-					task, err := s.CreateTask(t.Context(), storage.CreateTaskParams{
+					task, err := s.CreateTask(t.Context(), domain.CreateTaskParams{
 						Name:      name,
 						Type:      taskType,
 						Payload:   []byte(`{"url":"https://example.com/api","method":"GET"}`),
@@ -417,12 +417,12 @@ func TestStorage_UpdateTask(t *testing.T) {
 				return create("old_name", "http_call", []string{"a", "b"})
 			},
 
-			p: storage.UpdateTaskParams{
+			p: domain.UpdateTaskParams{
 				Name: ptr("new_name"),
 				Tags: []string{"x", "y"},
 			},
 
-			check: func(t *testing.T, before, got *storage.Task) {
+			check: func(t *testing.T, before, got *domain.Task) {
 				if got.Name != "new_name" {
 					t.Errorf("name = %s, want %s", got.Name, "new_name")
 				}
@@ -450,11 +450,11 @@ func TestStorage_UpdateTask(t *testing.T) {
 			name: "update only max retries does not touch others",
 			dsn:  testDSN,
 
-			setup: func(t *testing.T, s *pgsql.Storage) *storage.Task {
+			setup: func(t *testing.T, s *pgsql.Storage) *domain.Task {
 				schedule := "0 0 * * *"
 				createdBy := "test"
 
-				task, err := s.CreateTask(t.Context(), storage.CreateTaskParams{
+				task, err := s.CreateTask(t.Context(), domain.CreateTaskParams{
 					Name:      "keep",
 					Type:      "http_call",
 					Payload:   []byte(`{"x":1}`),
@@ -470,11 +470,11 @@ func TestStorage_UpdateTask(t *testing.T) {
 				return task
 			},
 
-			p: storage.UpdateTaskParams{
+			p: domain.UpdateTaskParams{
 				MaxRetries: ptr(99),
 			},
 
-			check: func(t *testing.T, before, got *storage.Task) {
+			check: func(t *testing.T, before, got *domain.Task) {
 				if got.MaxRetries != 99 {
 					t.Errorf("max_retries = %d", got.MaxRetries)
 				}
@@ -493,7 +493,7 @@ func TestStorage_UpdateTask(t *testing.T) {
 			name: "task not found",
 			dsn:  testDSN,
 
-			p: storage.UpdateTaskParams{
+			p: domain.UpdateTaskParams{
 				ID:   "00000000-0000-0000-0000-000000000000",
 				Name: ptr("x"),
 			},
@@ -513,7 +513,7 @@ func TestStorage_UpdateTask(t *testing.T) {
 				t.Fatalf("new storage: %v", err)
 			}
 
-			var before *storage.Task
+			var before *domain.Task
 			if tt.setup != nil {
 				before = tt.setup(t, s)
 				tt.p.ID = before.ID
@@ -553,7 +553,7 @@ func TestStorage_UpdateTaskStatus(t *testing.T) {
 		status    string
 		nextRunAt *time.Time
 
-		check func(t *testing.T, before *storage.Task, after *storage.Task)
+		check func(t *testing.T, before *domain.Task, after *domain.Task)
 
 		wantErr bool
 	}{
@@ -565,7 +565,7 @@ func TestStorage_UpdateTaskStatus(t *testing.T) {
 				schedule := "0 0 * * *"
 				createdBy := "test"
 
-				task, err := s.CreateTask(t.Context(), storage.CreateTaskParams{
+				task, err := s.CreateTask(t.Context(), domain.CreateTaskParams{
 					Name:      "t1",
 					Type:      "http_call",
 					Payload:   []byte(`{}`),
@@ -583,7 +583,7 @@ func TestStorage_UpdateTaskStatus(t *testing.T) {
 			status:    "running",
 			nextRunAt: ptrTime(time.Now().Add(time.Hour)),
 
-			check: func(t *testing.T, before, after *storage.Task) {
+			check: func(t *testing.T, before, after *domain.Task) {
 				if after.Status != "running" {
 					t.Errorf("status = %s", after.Status)
 				}
@@ -598,7 +598,7 @@ func TestStorage_UpdateTaskStatus(t *testing.T) {
 			dsn:  testDSN,
 
 			setup: func(t *testing.T, s *pgsql.Storage) string {
-				task, err := s.CreateTask(t.Context(), storage.CreateTaskParams{
+				task, err := s.CreateTask(t.Context(), domain.CreateTaskParams{
 					Name:     "t2",
 					Type:     "http_call",
 					Payload:  []byte(`{}`),
@@ -614,7 +614,7 @@ func TestStorage_UpdateTaskStatus(t *testing.T) {
 			status:    "completed",
 			nextRunAt: nil,
 
-			check: func(t *testing.T, before, after *storage.Task) {
+			check: func(t *testing.T, before, after *domain.Task) {
 				if after.Status != "completed" {
 					t.Errorf("status = %s", after.Status)
 				}
@@ -634,7 +634,7 @@ func TestStorage_UpdateTaskStatus(t *testing.T) {
 			dsn:  testDSN,
 
 			setup: func(t *testing.T, s *pgsql.Storage) string {
-				task, err := s.CreateTask(t.Context(), storage.CreateTaskParams{
+				task, err := s.CreateTask(t.Context(), domain.CreateTaskParams{
 					Name:     "t3",
 					Type:     "http_call",
 					Payload:  []byte(`{}`),
@@ -650,7 +650,7 @@ func TestStorage_UpdateTaskStatus(t *testing.T) {
 			status:    "failed",
 			nextRunAt: nil,
 
-			check: func(t *testing.T, before, after *storage.Task) {
+			check: func(t *testing.T, before, after *domain.Task) {
 				if after.Status != "failed" {
 					t.Errorf("status = %s", after.Status)
 				}
@@ -722,7 +722,7 @@ func TestStorage_DeleteTask(t *testing.T) {
 			dsn:  testDSN,
 			log:  log,
 			setup: func(t *testing.T, s *pgsql.Storage) string {
-				task, err := s.CreateTask(t.Context(), storage.CreateTaskParams{
+				task, err := s.CreateTask(t.Context(), domain.CreateTaskParams{
 					Name:     "to be deleted",
 					Type:     "http_call",
 					Payload:  []byte(`{}`),

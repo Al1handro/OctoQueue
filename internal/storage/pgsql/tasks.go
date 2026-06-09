@@ -1,7 +1,7 @@
 package pgsql
 
 import (
-	"OctoQueue/internal/storage"
+	"OctoQueue/internal/domain"
 	"context"
 	"fmt"
 	"time"
@@ -9,7 +9,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-func (s *Storage) CreateTask(ctx context.Context, p storage.CreateTaskParams) (*storage.Task, error) {
+func (s *Storage) CreateTask(ctx context.Context, p domain.CreateTaskParams) (*domain.Task, error) {
 	const op = "storage.pgsql.CreateTask"
 
 	row := s.Pool().QueryRow(ctx, `
@@ -30,14 +30,14 @@ func (s *Storage) CreateTask(ctx context.Context, p storage.CreateTaskParams) (*
 	)
 
 	t, err := scanTask(row)
-	if err != nil {
+	if err != nil {	
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 
 	return t, nil
 }
 
-func (s *Storage) GetTaskByID(ctx context.Context, id string) (*storage.Task, error) {
+func (s *Storage) GetTaskByID(ctx context.Context, id string) (*domain.Task, error) {
 	const op = "storage.pgsql.GetTaskByID"
 
 	row := s.Pool().QueryRow(ctx, `
@@ -59,7 +59,7 @@ func (s *Storage) GetTaskByID(ctx context.Context, id string) (*storage.Task, er
 	return t, nil
 }
 
-func (s *Storage) ListTasks(ctx context.Context, p storage.ListTasksParams) ([]*storage.Task, error) {
+func (s *Storage) ListTasks(ctx context.Context, p domain.ListTasksParams) ([]*domain.Task, error) {
 	const op = "storage.pgsql.ListTasks"
 
 	if p.Limit == 0 {
@@ -86,7 +86,7 @@ func (s *Storage) ListTasks(ctx context.Context, p storage.ListTasksParams) ([]*
 	}
 	defer rows.Close()
 
-	var tasks []*storage.Task
+	var tasks []*domain.Task
 	for rows.Next() {
 		t, err := scanTask(rows)
 		if err != nil {
@@ -98,7 +98,7 @@ func (s *Storage) ListTasks(ctx context.Context, p storage.ListTasksParams) ([]*
 	return tasks, rows.Err()
 }
 
-func (s *Storage) UpdateTask(ctx context.Context, p storage.UpdateTaskParams) (*storage.Task, error) {
+func (s *Storage) UpdateTask(ctx context.Context, p domain.UpdateTaskParams) (*domain.Task, error) {
 	const op = "storage.pgsql.UpdateTask"
 
 	row := s.Pool().QueryRow(ctx, `
@@ -174,7 +174,7 @@ func (s *Storage) DeleteTask(ctx context.Context, id string) error {
 
 // Берёт до limit задач готовых к запуску, атомарно переводит в running
 
-func (s *Storage) AcquirePendingTasks(ctx context.Context, workerID string, limit int) ([]*storage.Task, error) {
+func (s *Storage) AcquirePendingTasks(ctx context.Context, workerID string, limit int) ([]*domain.Task, error) {
 	const op = "storage.pgsql.AcquirePendingTasks"
 
 	rows, err := s.Pool().Query(ctx, `
@@ -206,7 +206,7 @@ func (s *Storage) AcquirePendingTasks(ctx context.Context, workerID string, limi
 	}
 	defer rows.Close()
 
-	var tasks []*storage.Task
+	var tasks []*domain.Task
 	for rows.Next() {
 		t, err := scanTask(rows)
 		if err != nil {
@@ -218,7 +218,7 @@ func (s *Storage) AcquirePendingTasks(ctx context.Context, workerID string, limi
 	return tasks, rows.Err()
 }
 
-func (s *Storage) CreateExecution(ctx context.Context, p storage.CreateExecutionParams) (*storage.TaskExecution, error) {
+func (s *Storage) CreateExecution(ctx context.Context, p domain.CreateExecutionParams) (*domain.TaskExecution, error) {
 	const op = "storage.pgsql.CreateExecution"
 
 	row := s.Pool().QueryRow(ctx, `
@@ -241,7 +241,7 @@ func (s *Storage) CreateExecution(ctx context.Context, p storage.CreateExecution
 	return e, nil
 }
 
-func (s *Storage) FinishExecution(ctx context.Context, p storage.FinishExecutionParams) (*storage.TaskExecution, error) {
+func (s *Storage) FinishExecution(ctx context.Context, p domain.FinishExecutionParams) (*domain.TaskExecution, error) {
 	const op = "storage.pgsql.FinishExecution"
 
 	row := s.Pool().QueryRow(ctx, `
@@ -271,7 +271,7 @@ func (s *Storage) FinishExecution(ctx context.Context, p storage.FinishExecution
 	return e, nil
 }
 
-func (s *Storage) ListExecutions(ctx context.Context, taskID string, limit int) ([]*storage.TaskExecution, error) {
+func (s *Storage) ListExecutions(ctx context.Context, taskID string, limit int) ([]*domain.TaskExecution, error) {
 	const op = "storage.pgsql.ListExecutions"
 
 	if limit == 0 {
@@ -296,7 +296,7 @@ func (s *Storage) ListExecutions(ctx context.Context, taskID string, limit int) 
 	}
 	defer rows.Close()
 
-	var execs []*storage.TaskExecution
+	var execs []*domain.TaskExecution
 	for rows.Next() {
 		e, err := scanExecution(rows)
 		if err != nil {
@@ -308,7 +308,7 @@ func (s *Storage) ListExecutions(ctx context.Context, taskID string, limit int) 
 	return execs, rows.Err()
 }
 
-func (s *Storage) AcquireLock(ctx context.Context, taskID, workerID string, ttl time.Duration) (*storage.TaskLock, error) {
+func (s *Storage) AcquireLock(ctx context.Context, taskID, workerID string, ttl time.Duration) (*domain.TaskLock, error) {
 	const op = "storage.pgsql.AcquireLock"
 
 	row := s.Pool().QueryRow(ctx, `
@@ -323,7 +323,7 @@ func (s *Storage) AcquireLock(ctx context.Context, taskID, workerID string, ttl 
 		taskID, workerID, ttl.String(),
 	)
 
-	var l storage.TaskLock
+	var l domain.TaskLock
 	err := row.Scan(&l.ID, &l.TaskID, &l.WorkerID, &l.AcquiredAt, &l.ExpiresAt)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", op, err)
@@ -365,8 +365,8 @@ type scanner interface {
 	Scan(dest ...any) error
 }
 
-func scanTask(s scanner) (*storage.Task, error) {
-	var t storage.Task
+func scanTask(s scanner) (*domain.Task, error) {
+	var t domain.Task
 	err := s.Scan(
 		&t.ID, &t.Name, &t.Type, &t.Payload, &t.Schedule, &t.Timezone,
 		&t.Status, &t.NextRunAt, &t.LastRunAt, &t.StartedAt,
@@ -383,8 +383,8 @@ func scanTask(s scanner) (*storage.Task, error) {
 	return &t, nil
 }
 
-func scanExecution(s scanner) (*storage.TaskExecution, error) {
-	var e storage.TaskExecution
+func scanExecution(s scanner) (*domain.TaskExecution, error) {
+	var e domain.TaskExecution
 	err := s.Scan(
 		&e.ID, &e.TaskID, &e.Status, &e.Attempt,
 		&e.StartedAt, &e.FinishedAt, &e.Duration,

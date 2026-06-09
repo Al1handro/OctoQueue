@@ -3,7 +3,7 @@
 package mocks
 
 import (
-	storage "OctoQueue/internal/storage"
+	domain "OctoQueue/internal/domain"
 	context "context"
 
 	mock "github.com/stretchr/testify/mock"
@@ -15,27 +15,27 @@ type ExecutionTracker struct {
 }
 
 // CreateExecution provides a mock function with given fields: ctx, p
-func (_m *ExecutionTracker) CreateExecution(ctx context.Context, p storage.CreateExecutionParams) (*storage.TaskExecution, error) {
+func (_m *ExecutionTracker) CreateExecution(ctx context.Context, p domain.CreateExecutionParams) (*domain.TaskExecution, error) {
 	ret := _m.Called(ctx, p)
 
 	if len(ret) == 0 {
 		panic("no return value specified for CreateExecution")
 	}
 
-	var r0 *storage.TaskExecution
+	var r0 *domain.TaskExecution
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, storage.CreateExecutionParams) (*storage.TaskExecution, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, domain.CreateExecutionParams) (*domain.TaskExecution, error)); ok {
 		return rf(ctx, p)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, storage.CreateExecutionParams) *storage.TaskExecution); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, domain.CreateExecutionParams) *domain.TaskExecution); ok {
 		r0 = rf(ctx, p)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*storage.TaskExecution)
+			r0 = ret.Get(0).(*domain.TaskExecution)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, storage.CreateExecutionParams) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, domain.CreateExecutionParams) error); ok {
 		r1 = rf(ctx, p)
 	} else {
 		r1 = ret.Error(1)
@@ -45,27 +45,27 @@ func (_m *ExecutionTracker) CreateExecution(ctx context.Context, p storage.Creat
 }
 
 // FinishExecution provides a mock function with given fields: ctx, p
-func (_m *ExecutionTracker) FinishExecution(ctx context.Context, p storage.FinishExecutionParams) (*storage.TaskExecution, error) {
+func (_m *ExecutionTracker) FinishExecution(ctx context.Context, p domain.FinishExecutionParams) (*domain.TaskExecution, error) {
 	ret := _m.Called(ctx, p)
 
 	if len(ret) == 0 {
 		panic("no return value specified for FinishExecution")
 	}
 
-	var r0 *storage.TaskExecution
+	var r0 *domain.TaskExecution
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, storage.FinishExecutionParams) (*storage.TaskExecution, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, domain.FinishExecutionParams) (*domain.TaskExecution, error)); ok {
 		return rf(ctx, p)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, storage.FinishExecutionParams) *storage.TaskExecution); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, domain.FinishExecutionParams) *domain.TaskExecution); ok {
 		r0 = rf(ctx, p)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*storage.TaskExecution)
+			r0 = ret.Get(0).(*domain.TaskExecution)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, storage.FinishExecutionParams) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, domain.FinishExecutionParams) error); ok {
 		r1 = rf(ctx, p)
 	} else {
 		r1 = ret.Error(1)
@@ -75,23 +75,23 @@ func (_m *ExecutionTracker) FinishExecution(ctx context.Context, p storage.Finis
 }
 
 // ListExecutions provides a mock function with given fields: ctx, taskID, limit
-func (_m *ExecutionTracker) ListExecutions(ctx context.Context, taskID string, limit int) ([]*storage.TaskExecution, error) {
+func (_m *ExecutionTracker) ListExecutions(ctx context.Context, taskID string, limit int) ([]*domain.TaskExecution, error) {
 	ret := _m.Called(ctx, taskID, limit)
 
 	if len(ret) == 0 {
 		panic("no return value specified for ListExecutions")
 	}
 
-	var r0 []*storage.TaskExecution
+	var r0 []*domain.TaskExecution
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, int) ([]*storage.TaskExecution, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, int) ([]*domain.TaskExecution, error)); ok {
 		return rf(ctx, taskID, limit)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, int) []*storage.TaskExecution); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, int) []*domain.TaskExecution); ok {
 		r0 = rf(ctx, taskID, limit)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]*storage.TaskExecution)
+			r0 = ret.Get(0).([]*domain.TaskExecution)
 		}
 	}
 

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"OctoQueue/internal/domain"
 	"OctoQueue/internal/lib/logger/sl"
 	"OctoQueue/internal/storage"
 	"encoding/json"
@@ -120,7 +121,7 @@ func CreateTask(log *slog.Logger, st storage.TaskRepository) http.HandlerFunc {
 			maxRetries = 3
 		}
 
-		task, err := st.CreateTask(r.Context(), storage.CreateTaskParams{
+		task, err := st.CreateTask(r.Context(), domain.CreateTaskParams{
 			Name:       req.Name,
 			Type:       req.Type,
 			Payload:    payloadBytes,
@@ -194,7 +195,7 @@ func ListTasks(log *slog.Logger, st storage.TaskRepository) http.HandlerFunc {
 		limit, _ := strconv.Atoi(q.Get("limit"))
 		offset, _ := strconv.Atoi(q.Get("offset"))
 
-		tasks, err := st.ListTasks(r.Context(), storage.ListTasksParams{
+		tasks, err := st.ListTasks(r.Context(), domain.ListTasksParams{
 			Status: status,
 			Type:   taskType,
 			Tags:   tags,
@@ -245,7 +246,7 @@ func UpdateTask(log *slog.Logger, st storage.TaskWriter) http.HandlerFunc {
 			payloadBytes = b
 		}
 
-		task, err := st.UpdateTask(r.Context(), storage.UpdateTaskParams{
+		task, err := st.UpdateTask(r.Context(), domain.UpdateTaskParams{
 			ID:         id,
 			Name:       req.Name,
 			Payload:    payloadBytes,
