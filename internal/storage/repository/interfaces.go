@@ -1,10 +1,17 @@
-package storage
+package repository
 
 import (
 	"OctoQueue/internal/domain"
 	"context"
 	"time"
 )
+
+type UserRepository interface {
+	CreateUser(ctx context.Context, user *domain.User) error
+	GetByEmail(ctx context.Context, email string) (*domain.User, error)
+	GetUser(ctx context.Context, id string) (*domain.User, error)
+	// GetByID(ctx context.Context, id string) (*domain.User, error)
+}
 
 //go:generate go run github.com/vektra/mockery/v2@latest --name=TaskRepository --output=./mocks
 type TaskRepository interface {
@@ -39,8 +46,3 @@ type LockManager interface {
 	CleanExpiredLocks(ctx context.Context) (int64, error)
 }
 
-type UserRepository interface {
-	Create(ctx context.Context, user *domain.User) error
-	GetByEmail(ctx context.Context, email string) (*domain.User, error)
-	GetByID(ctx context.Context, id string) (*domain.User, error)
-}

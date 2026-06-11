@@ -1,8 +1,8 @@
-package pgsql_test
+package repository_test
 
 import (
 	"OctoQueue/internal/domain"
-	"OctoQueue/internal/storage/pgsql"
+	"OctoQueue/internal/storage/repository"
 	"context"
 	"io"
 	"log/slog"
@@ -22,7 +22,7 @@ func ptr[T any](v T) *T {
 func TestStorage_CreateTask(t *testing.T) {
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	s, err := pgsql.NewStorage(context.Background(), testDSN, log)
+	s, err := repository.NewStorage(context.Background(), testDSN, log)
 	if err != nil {
 		t.Fatalf("could not connect to test db: %v", err)
 	}
@@ -149,7 +149,7 @@ func TestStorage_CreateTask(t *testing.T) {
 func TestStorage_GetTaskByID(t *testing.T) {
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	s, err := pgsql.NewStorage(context.Background(), testDSN, log)
+	s, err := repository.NewStorage(context.Background(), testDSN, log)
 	if err != nil {
 		t.Fatalf("could not connect to test db: %v", err)
 	}
@@ -212,7 +212,7 @@ func TestStorage_GetTaskByID(t *testing.T) {
 func TestStorage_ListTasks(t *testing.T) {
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	s, err := pgsql.NewStorage(context.Background(), testDSN, log)
+	s, err := repository.NewStorage(context.Background(), testDSN, log)
 	if err != nil {
 		t.Fatalf("could not connect to test db: %v", err)
 	}
@@ -381,7 +381,7 @@ func TestStorage_UpdateTask(t *testing.T) {
 		name string
 		dsn  string
 
-		setup func(t *testing.T, s *pgsql.Storage) *domain.Task
+		setup func(t *testing.T, s *repository.Storage) *domain.Task
 		p     domain.UpdateTaskParams
 
 		check   func(t *testing.T, before, got *domain.Task)
@@ -391,7 +391,7 @@ func TestStorage_UpdateTask(t *testing.T) {
 			name: "update name and tags",
 			dsn:  testDSN,
 
-			setup: func(t *testing.T, s *pgsql.Storage) *domain.Task {
+			setup: func(t *testing.T, s *repository.Storage) *domain.Task {
 				schedule := "0 0 * * *"
 				createdBy := "test"
 
@@ -450,7 +450,7 @@ func TestStorage_UpdateTask(t *testing.T) {
 			name: "update only max retries does not touch others",
 			dsn:  testDSN,
 
-			setup: func(t *testing.T, s *pgsql.Storage) *domain.Task {
+			setup: func(t *testing.T, s *repository.Storage) *domain.Task {
 				schedule := "0 0 * * *"
 				createdBy := "test"
 
@@ -508,7 +508,7 @@ func TestStorage_UpdateTask(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			s, err := pgsql.NewStorage(ctx, tt.dsn, log)
+			s, err := repository.NewStorage(ctx, tt.dsn, log)
 			if err != nil {
 				t.Fatalf("new storage: %v", err)
 			}
@@ -548,7 +548,7 @@ func TestStorage_UpdateTaskStatus(t *testing.T) {
 		name string
 		dsn  string
 
-		setup func(t *testing.T, s *pgsql.Storage) (id string)
+		setup func(t *testing.T, s *repository.Storage) (id string)
 
 		status    string
 		nextRunAt *time.Time
@@ -561,7 +561,7 @@ func TestStorage_UpdateTaskStatus(t *testing.T) {
 			name: "set running status does not touch last_run_at",
 			dsn:  testDSN,
 
-			setup: func(t *testing.T, s *pgsql.Storage) string {
+			setup: func(t *testing.T, s *repository.Storage) string {
 				schedule := "0 0 * * *"
 				createdBy := "test"
 
@@ -597,7 +597,7 @@ func TestStorage_UpdateTaskStatus(t *testing.T) {
 			name: "completed sets last_run_at",
 			dsn:  testDSN,
 
-			setup: func(t *testing.T, s *pgsql.Storage) string {
+			setup: func(t *testing.T, s *repository.Storage) string {
 				task, err := s.CreateTask(t.Context(), domain.CreateTaskParams{
 					Name:     "t2",
 					Type:     "http_call",
@@ -633,7 +633,7 @@ func TestStorage_UpdateTaskStatus(t *testing.T) {
 			name: "failed sets last_run_at",
 			dsn:  testDSN,
 
-			setup: func(t *testing.T, s *pgsql.Storage) string {
+			setup: func(t *testing.T, s *repository.Storage) string {
 				task, err := s.CreateTask(t.Context(), domain.CreateTaskParams{
 					Name:     "t3",
 					Type:     "http_call",
@@ -665,7 +665,7 @@ func TestStorage_UpdateTaskStatus(t *testing.T) {
 		tt := tt
 
 		t.Run(tt.name, func(t *testing.T) {
-			s, err := pgsql.NewStorage(t.Context(), tt.dsn, log)
+			s, err := repository.NewStorage(t.Context(), tt.dsn, log)
 			if err != nil {
 				t.Fatalf("new storage: %v", err)
 			}
@@ -714,14 +714,14 @@ func TestStorage_DeleteTask(t *testing.T) {
 		name    string
 		dsn     string
 		log     *slog.Logger
-		setup   func(*testing.T, *pgsql.Storage) string
+		setup   func(*testing.T, *repository.Storage) string
 		wantErr bool
 	}{
 		{
 			name: "delete existing task",
 			dsn:  testDSN,
 			log:  log,
-			setup: func(t *testing.T, s *pgsql.Storage) string {
+			setup: func(t *testing.T, s *repository.Storage) string {
 				task, err := s.CreateTask(t.Context(), domain.CreateTaskParams{
 					Name:     "to be deleted",
 					Type:     "http_call",
@@ -740,7 +740,7 @@ func TestStorage_DeleteTask(t *testing.T) {
 			name: "delete not existing task",
 			dsn:  testDSN,
 			log:  log,
-			setup: func(t *testing.T, s *pgsql.Storage) string {
+			setup: func(t *testing.T, s *repository.Storage) string {
 				return "00000000-0000-0000-0000-000000000000"
 			},
 			wantErr: true,
@@ -748,7 +748,7 @@ func TestStorage_DeleteTask(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s, err := pgsql.NewStorage(t.Context(), tt.dsn, tt.log)
+			s, err := repository.NewStorage(t.Context(), tt.dsn, tt.log)
 			if err != nil {
 				t.Fatalf("could not construct receiver type: %v", err)
 			}

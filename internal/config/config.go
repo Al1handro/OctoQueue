@@ -12,6 +12,7 @@ type Config struct {
 	Env string `yaml:"env" env-default:"local"`
 	HttpServer `yaml:"http_server"`
 	PsqlInfo `yaml:"psql_info"`
+	JWTSecret   string `yaml:"jwt_secret" env-required:"true"`
 }
 
 type HttpServer struct {

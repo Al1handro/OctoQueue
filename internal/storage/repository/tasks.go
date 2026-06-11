@@ -1,4 +1,4 @@
-package pgsql
+package repository
 
 import (
 	"OctoQueue/internal/domain"

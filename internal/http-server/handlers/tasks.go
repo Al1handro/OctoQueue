@@ -3,7 +3,7 @@ package handlers
 import (
 	"OctoQueue/internal/domain"
 	"OctoQueue/internal/lib/logger/sl"
-	"OctoQueue/internal/storage"
+	"OctoQueue/internal/storage/repository"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -39,22 +39,17 @@ type UpdateTaskRequest struct {
 	TargetHost *string  `json:"target_host,omitempty"`
 }
 
-// Helpers
+// // Helpers
 
-func writeJSON(w http.ResponseWriter, status int, data any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(data)
-}
+// func writeJSON(w http.ResponseWriter, status int, data any) {
+// 	w.Header().Set("Content-Type", "application/json")
+// 	w.WriteHeader(status)
+// 	_ = json.NewEncoder(w).Encode(data)
+// }
 
-func writeError(w http.ResponseWriter, status int, msg string) {
-	writeJSON(w, status, map[string]string{"error": msg})
-}
-
-func decodeJSON(r *http.Request, dst any) error {
-	defer r.Body.Close()
-	return json.NewDecoder(r.Body).Decode(dst)
-}
+// func writeError(w http.ResponseWriter, status int, msg string) {
+// 	writeJSON(w, status, map[string]string{"error": msg})
+// }
 
 // Status GET /status
 
@@ -77,7 +72,7 @@ func Status(log *slog.Logger) http.HandlerFunc {
 
 // CreateTask POST /tasks
 
-func CreateTask(log *slog.Logger, st storage.TaskRepository) http.HandlerFunc {
+func CreateTask(log *slog.Logger, st repository.TaskRepository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		const op = "handlers.CreateTask"
 		logger := log.With(slog.String("op", op), slog.String("request_id", middleware.GetReqID(r.Context())))
@@ -85,19 +80,19 @@ func CreateTask(log *slog.Logger, st storage.TaskRepository) http.HandlerFunc {
 		var req CreateTaskRequest
 		if err := decodeJSON(r, &req); err != nil {
 			logger.Error("failed to decode request", sl.Err(err))
-			writeError(w, http.StatusBadRequest, "invalid request body")
+			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request body")
 			return
 		}
 
 		if req.Name == "" || req.Type == "" {
-			writeError(w, http.StatusBadRequest, "name and type are required")
+			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "name and type are required")
 			return
 		}
 
 		payloadBytes, err := json.Marshal(req.Payload)
 		if err != nil {
 			logger.Error("failed to marshal payload", sl.Err(err))
-			writeError(w, http.StatusBadRequest, "invalid payload")
+			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid payload")
 			return
 		}
 
@@ -110,7 +105,7 @@ func CreateTask(log *slog.Logger, st storage.TaskRepository) http.HandlerFunc {
 		if req.RunAt != nil {
 			t, err := time.Parse(time.RFC3339, *req.RunAt)
 			if err != nil {
-				writeError(w, http.StatusBadRequest, "invalid run_at format, use RFC3339")
+				writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid run_at format, use RFC3339")
 				return
 			}
 			nextRunAt = &t
@@ -135,7 +130,7 @@ func CreateTask(log *slog.Logger, st storage.TaskRepository) http.HandlerFunc {
 		})
 		if err != nil {
 			logger.Error("failed to create task", sl.Err(err))
-			writeError(w, http.StatusInternalServerError, "failed to create task")
+			writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to create task")
 			return
 		}
 
@@ -146,21 +141,21 @@ func CreateTask(log *slog.Logger, st storage.TaskRepository) http.HandlerFunc {
 
 // GetTask GET /tasks/{id}
 
-func GetTask(log *slog.Logger, st storage.TaskRepository) http.HandlerFunc {
+func GetTask(log *slog.Logger, st repository.TaskRepository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		const op = "handlers.GetTask"
 		logger := log.With(slog.String("op", op), slog.String("request_id", middleware.GetReqID(r.Context())))
 
 		id := chi.URLParam(r, "id")
 		if id == "" {
-			writeError(w, http.StatusBadRequest, "missing task id")
+			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "missing task id")
 			return
 		}
 
 		task, err := st.GetTaskByID(r.Context(), id)
 		if err != nil {
 			logger.Error("failed to get task", sl.Err(err), slog.String("task_id", id))
-			writeError(w, http.StatusNotFound, "task not found")
+			writeError(w, http.StatusNotFound, "TASK_NOT_FOUND", "task not found")
 			return
 		}
 
@@ -170,7 +165,7 @@ func GetTask(log *slog.Logger, st storage.TaskRepository) http.HandlerFunc {
 
 // ListTasks GET /tasks?status=&type=&tags=&limit=&offset=
 
-func ListTasks(log *slog.Logger, st storage.TaskRepository) http.HandlerFunc {
+func ListTasks(log *slog.Logger, st repository.TaskRepository) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		const op = "handlers.ListTasks"
 		logger := log.With(slog.String("op", op), slog.String("request_id", middleware.GetReqID(r.Context())))
@@ -204,7 +199,7 @@ func ListTasks(log *slog.Logger, st storage.TaskRepository) http.HandlerFunc {
 		})
 		if err != nil {
 			logger.Error("failed to list tasks", sl.Err(err))
-			writeError(w, http.StatusInternalServerError, "failed to list tasks")
+			writeError(w, http.StatusInternalServerError, "", "failed to list tasks")
 			return
 		}
 
@@ -218,21 +213,21 @@ func ListTasks(log *slog.Logger, st storage.TaskRepository) http.HandlerFunc {
 
 // UpdateTask PATCH /tasks/{id}
 
-func UpdateTask(log *slog.Logger, st storage.TaskWriter) http.HandlerFunc {
+func UpdateTask(log *slog.Logger, st repository.TaskWriter) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		const op = "handlers.UpdateTask"
 		logger := log.With(slog.String("op", op), slog.String("request_id", middleware.GetReqID(r.Context())))
 
 		id := chi.URLParam(r, "id")
 		if id == "" {
-			writeError(w, http.StatusBadRequest, "missing task id")
+			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "missing task id")
 			return
 		}
 
 		var req UpdateTaskRequest
 		if err := decodeJSON(r, &req); err != nil {
 			logger.Error("failed to decode request", sl.Err(err))
-			writeError(w, http.StatusBadRequest, "invalid request body")
+			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid request body")
 			return
 		}
 
@@ -240,7 +235,7 @@ func UpdateTask(log *slog.Logger, st storage.TaskWriter) http.HandlerFunc {
 		if req.Payload != nil {
 			b, err := json.Marshal(req.Payload)
 			if err != nil {
-				writeError(w, http.StatusBadRequest, "invalid payload")
+				writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid payload")
 				return
 			}
 			payloadBytes = b
@@ -258,7 +253,7 @@ func UpdateTask(log *slog.Logger, st storage.TaskWriter) http.HandlerFunc {
 		})
 		if err != nil {
 			logger.Error("failed to update task", sl.Err(err), slog.String("task_id", id))
-			writeError(w, http.StatusInternalServerError, "failed to update task")
+			writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to update task")
 			return
 		}
 
@@ -269,20 +264,20 @@ func UpdateTask(log *slog.Logger, st storage.TaskWriter) http.HandlerFunc {
 
 // DeleteTask DELETE /tasks/{id}
 
-func DeleteTask(log *slog.Logger, st storage.TaskWriter) http.HandlerFunc {
+func DeleteTask(log *slog.Logger, st repository.TaskWriter) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		const op = "handlers.DeleteTask"
 		logger := log.With(slog.String("op", op), slog.String("request_id", middleware.GetReqID(r.Context())))
 
 		id := chi.URLParam(r, "id")
 		if id == "" {
-			writeError(w, http.StatusBadRequest, "missing task id")
+			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "missing task id")
 			return
 		}
 
 		if err := st.DeleteTask(r.Context(), id); err != nil {
 			logger.Error("failed to delete task", sl.Err(err), slog.String("task_id", id))
-			writeError(w, http.StatusNotFound, "task not found")
+			writeError(w, http.StatusNotFound, "TASK_NOT_FOUND", "task not found")
 			return
 		}
 
@@ -293,14 +288,14 @@ func DeleteTask(log *slog.Logger, st storage.TaskWriter) http.HandlerFunc {
 
 // GetTaskExecutions GET /tasks/{id}/executions?limit=
 
-func GetTaskExecutions(log *slog.Logger, st storage.ExecutionTracker) http.HandlerFunc {
+func GetTaskExecutions(log *slog.Logger, st repository.ExecutionTracker) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		const op = "handlers.GetTaskExecutions"
 		logger := log.With(slog.String("op", op), slog.String("request_id", middleware.GetReqID(r.Context())))
 
 		id := chi.URLParam(r, "id")
 		if id == "" {
-			writeError(w, http.StatusBadRequest, "missing task id")
+			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "missing task id")
 			return
 		}
 
@@ -309,7 +304,7 @@ func GetTaskExecutions(log *slog.Logger, st storage.ExecutionTracker) http.Handl
 		executions, err := st.ListExecutions(r.Context(), id, limit)
 		if err != nil {
 			logger.Error("failed to get executions", sl.Err(err), slog.String("task_id", id))
-			writeError(w, http.StatusInternalServerError, "failed to get executions")
+			writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to get executions")
 			return
 		}
 

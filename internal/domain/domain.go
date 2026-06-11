@@ -1,16 +1,27 @@
 package domain
 
-import "time"
+import (
+	"errors"
+	"time"
+)
 
 type Role string
 
 const (
 	RoleAdmin Role = "admin"
 	RoleUser  Role = "user"
-	
-	ErrInvalidRequest = "invalid request"
-	ErrNotFound       = "not found"
-	ErrUnauthorized   = "unauthorized"
+)
+
+var (
+	ErrNotFound        = errors.New("not found")
+	ErrRoomNotFound    = errors.New("room not found")
+	ErrSlotNotFound    = errors.New("slot not found")
+	ErrBookingNotFound = errors.New("booking not found")
+	ErrScheduleExists  = errors.New("schedule already exists")
+	ErrSlotBooked      = errors.New("slot already booked")
+	ErrForbidden       = errors.New("forbidden")
+	ErrInvalidRequest  = errors.New("invalid request")
+	ErrUnauthorized    = errors.New("unauthorized")
 )
 
 type User struct {
