@@ -74,7 +74,6 @@ func main() {
 	router := chi.NewRouter()
 
 	authMW := auth.Auth(cfg.JWTSecret)
-
 	
 	router.Use(middleware.RequestID)
 	router.Use(middleware.RealIP)
@@ -86,7 +85,7 @@ func main() {
 	router.Post("/register", authH.Register)
 	router.Post("/login", authH.Login)
 
-	router.With(authMW).Get("/status", handlers.Status(log))
+	router.Get("/status", handlers.Status(log))
 	router.With(authMW).Post("/tasks", handlers.CreateTask(log, storage))
 	router.With(authMW).Get("/tasks", handlers.ListTasks(log, storage))
 	router.With(authMW).Get("/tasks/{id}", handlers.GetTask(log, storage))

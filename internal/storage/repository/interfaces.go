@@ -6,6 +6,7 @@ import (
 	"time"
 )
 
+//go:generate go run github.com/vektra/mockery/v2@latest --name=UserRepository --output=./mocks
 type UserRepository interface {
 	CreateUser(ctx context.Context, user *domain.User) error
 	GetByEmail(ctx context.Context, email string) (*domain.User, error)

@@ -53,11 +53,12 @@ type Task struct {
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
 	DeletedAt  *time.Time
+	UserID     *string
 }
 
 type TaskExecution struct {
-	ID         string
-	TaskID     string
+	ID         *string
+	TaskID     *string
 	Status     string
 	Attempt    int
 	StartedAt  time.Time
@@ -91,9 +92,11 @@ type CreateTaskParams struct {
 	Tags       []string
 	CreatedBy  *string
 	TargetHost *string
+	UserID     string
 }
 
 type ListTasksParams struct {
+	UserID string
 	Status *string
 	Type   *string
 	Tags   []string

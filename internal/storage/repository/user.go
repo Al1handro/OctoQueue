@@ -58,7 +58,7 @@ func (s *pgUserRepo) GetByEmail(ctx context.Context, email string) (*domain.User
 	const op = "storage.pgsql.GetByEmail"		
 	var u domain.User
 	err := s.Pool().QueryRow(ctx, `
-	SELECT id, email, password, role, created_at
+	SELECT id, email, password_hash, role, created_at
 		FROM users
 		WHERE email = $1
 	`, email).Scan(&u.ID, &u.Email, &u.Password, &u.Role, &u.CreatedAt)

@@ -20,7 +20,6 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Email    string `json:"email"`
 		Password string `json:"password"`
-		Role     string `json:"role"`
 	}
 	if err := decode(r, &req); err != nil {
 		writeError(w, 400, "INVALID_REQUEST", "invalid request body")
@@ -30,12 +29,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 400, "INVALID_REQUEST", "email and password are required")
 		return
 	}
-	role := domain.Role(req.Role)
-	if role != domain.RoleAdmin && role != domain.RoleUser {
-		writeError(w, 400, "INVALID_REQUEST", "role must be admin or user")
-		return
-	}
-	user, err := h.svc.Register(r.Context(), req.Email, req.Password, role)
+	user, err := h.svc.Register(r.Context(), req.Email, req.Password, domain.RoleUser)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to register user")
 		return

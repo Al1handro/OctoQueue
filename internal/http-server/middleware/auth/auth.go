@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -22,24 +23,28 @@ func Auth(secret string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			authHeader := r.Header.Get("Authorization")
-			if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
+			parts := strings.Fields(authHeader)
+			if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
 				writeUnauthorized(w)
 				return
 			}
-			tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
+			tokenStr := parts[1]
 			claims := jwt.MapClaims{}
-			token, err := jwt.ParseWithClaims(tokenStr, claims, func(t *jwt.Token) (interface{}, error) {
-				if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-					return nil, jwt.ErrSignatureInvalid
-				}
-				return []byte(secret), nil
-			})
+			token, err := jwt.ParseWithClaims(tokenStr, claims,
+				func(t *jwt.Token) (interface{}, error) {
+					if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+						return nil, jwt.ErrSignatureInvalid
+					}
+					return []byte(secret), nil
+				})
 			if err != nil || !token.Valid {
+				fmt.Println("Invalid token") // Debugging log
 				writeUnauthorized(w)
 				return
 			}
 			userIDStr, ok := claims["user_id"].(string)
 			if !ok {
+				fmt.Println("User ID not found in claims") // Debugging log
 				writeUnauthorized(w)
 				return
 			}

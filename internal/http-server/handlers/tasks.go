@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"OctoQueue/internal/domain"
+	"OctoQueue/internal/http-server/middleware/auth"
 	"OctoQueue/internal/lib/logger/sl"
 	"OctoQueue/internal/storage/repository"
 	"encoding/json"
@@ -189,8 +190,10 @@ func ListTasks(log *slog.Logger, st repository.TaskRepository) http.HandlerFunc 
 
 		limit, _ := strconv.Atoi(q.Get("limit"))
 		offset, _ := strconv.Atoi(q.Get("offset"))
+		userID := auth.GetUserID(r.Context()).String()
 
 		tasks, err := st.ListTasks(r.Context(), domain.ListTasksParams{
+			UserID: userID,
 			Status: status,
 			Type:   taskType,
 			Tags:   tags,
