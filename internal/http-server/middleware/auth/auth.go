@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -12,14 +13,10 @@ import (
 	"github.com/google/uuid"
 )
 
-type contextKey string
-
-const (
-	CtxUserID contextKey = "user_id"
-	CtxRole   contextKey = "role"
-)
-
 func Auth(secret string) func(http.Handler) http.Handler {
+	if secret == "" {
+        panic("auth: JWT secret must not be empty")
+    }
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			authHeader := r.Header.Get("Authorization")
@@ -33,7 +30,7 @@ func Auth(secret string) func(http.Handler) http.Handler {
 			token, err := jwt.ParseWithClaims(tokenStr, claims,
 				func(t *jwt.Token) (interface{}, error) {
 					if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-						return nil, jwt.ErrSignatureInvalid
+						return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
 					}
 					return []byte(secret), nil
 				})
@@ -54,8 +51,8 @@ func Auth(secret string) func(http.Handler) http.Handler {
 				return
 			}
 			role, _ := claims["role"].(string)
-			ctx := context.WithValue(r.Context(), CtxUserID, userID)
-			ctx = context.WithValue(ctx, CtxRole, domain.Role(role))
+			ctx := context.WithValue(r.Context(), domain.CtxUserID, userID)
+			ctx = context.WithValue(ctx, domain.CtxRole, domain.Role(role))
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
@@ -73,13 +70,18 @@ func RequireRole(role domain.Role) func(http.Handler) http.Handler {
 	}
 }
 
-func GetUserID(ctx context.Context) uuid.UUID {
-	id, _ := ctx.Value(CtxUserID).(uuid.UUID)
-	return id
+var ErrUserIDNotFound = errors.New("user id not found in context")
+
+func GetUserID(ctx context.Context) (uuid.UUID, error) {
+	id, ok := ctx.Value(domain.CtxUserID).(uuid.UUID)
+	if !ok {
+		return uuid.Nil, ErrUserIDNotFound
+	}
+	return id, nil
 }
 
 func getRole(ctx context.Context) domain.Role {
-	role, _ := ctx.Value(CtxRole).(domain.Role)
+	role, _ := ctx.Value(domain.CtxRole).(domain.Role)
 	return role
 }
 

@@ -35,7 +35,7 @@ func (s *AuthService) Register(ctx context.Context, email, password string, role
 	}
 
 	if err := s.users.CreateUser(ctx, u); err != nil {
-		return nil, fmt.Errorf("email already taken: %w", domain.ErrInvalidRequest)
+		return nil, fmt.Errorf("error creating user: %w", domain.ErrInvalidRequest)
 	}
 	return u, nil
 }
@@ -48,7 +48,7 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (string
 	if err := bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(password)); err != nil {
 		return "", domain.ErrUnauthorized
 	}
-	return s.generateToken(u.ID, u.Role)
+	return s.generateToken(u.ID.String(), u.Role)
 }
 
 func (s *AuthService) generateToken(userID string, role domain.Role) (string, error) {

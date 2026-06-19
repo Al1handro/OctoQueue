@@ -3,6 +3,15 @@ package domain
 import (
 	"errors"
 	"time"
+
+	"github.com/google/uuid"
+)
+
+type СontextKey string
+
+const (
+	CtxUserID СontextKey = "user_id"
+	CtxRole   СontextKey = "role"
 )
 
 type Role string
@@ -25,7 +34,7 @@ var (
 )
 
 type User struct {
-	ID        string    `json:"id"`
+	ID        uuid.UUID    `json:"id"`
 	Email     string    `json:"email"`
 	Password  string    `json:"-"`
 	Role      Role      `json:"role"`
@@ -92,11 +101,11 @@ type CreateTaskParams struct {
 	Tags       []string
 	CreatedBy  *string
 	TargetHost *string
-	UserID     string
+	UserID     uuid.UUID
 }
 
 type ListTasksParams struct {
-	UserID string
+	UserID uuid.UUID
 	Status *string
 	Type   *string
 	Tags   []string

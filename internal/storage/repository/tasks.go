@@ -26,7 +26,8 @@ func (s *Storage) CreateTask(ctx context.Context, p domain.CreateTaskParams) (*d
 			id, name, type, payload, schedule, timezone,
 			status, next_run_at, last_run_at, started_at,
 			retries, max_retries, retry_delay, timeout,
-			target_host, tags, created_by, created_at, updated_at, deleted_at`,
+			target_host, tags, created_by, created_at, 
+			updated_at, deleted_at, user_id`,
 		p.Name, p.Type, p.Payload, p.Schedule, p.Timezone,
 		p.NextRunAt, p.MaxRetries, p.Tags, p.CreatedBy, p.TargetHost, p.UserID,
 	)
@@ -84,7 +85,7 @@ func (s *Storage) ListTasks(ctx context.Context, p domain.ListTasksParams) ([]*d
 		  AND ($1::varchar IS NULL OR status = $1)
 		  AND ($2::varchar IS NULL OR type   = $2)
 		  AND ($3::text[]  IS NULL OR tags   @> $3)
-		  AND ($6::varchar IS NULL OR user_id = $6)
+		  AND ($6::uuid IS NULL OR user_id = $6)
 		ORDER BY created_at DESC, id DESC
 		LIMIT $4 OFFSET $5`,
 		p.Status, p.Type, p.Tags, p.Limit, p.Offset, p.UserID,
