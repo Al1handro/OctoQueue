@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -12,16 +13,18 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-type AuthService struct {
+var ErrEmailTaken = errors.New("Email already registred")
+
+type Auth struct {
 	users     repository.UserRepository
 	jwtSecret string
 }
 
-func NewAuthService(users repository.UserRepository, jwtSecret string) *AuthService {
-	return &AuthService{users: users, jwtSecret: jwtSecret}
+func NewAuthService(users repository.UserRepository, jwtSecret string) AuthService {
+	return &Auth{users: users, jwtSecret: jwtSecret}
 }
 
-func (s *AuthService) Register(ctx context.Context, email, password string, role domain.Role) (*domain.User, error) {
+func (s *Auth) Register(ctx context.Context, email, password string, role domain.Role) (*domain.User, error) {
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, err
@@ -40,7 +43,7 @@ func (s *AuthService) Register(ctx context.Context, email, password string, role
 	return u, nil
 }
 
-func (s *AuthService) Login(ctx context.Context, email, password string) (string, error) {
+func (s *Auth) Login(ctx context.Context, email, password string) (string, error) {
 	u, err := s.users.GetByEmail(ctx, email)
 	if err != nil {
 		return "", domain.ErrUnauthorized
@@ -51,7 +54,7 @@ func (s *AuthService) Login(ctx context.Context, email, password string) (string
 	return s.generateToken(u.ID.String(), u.Role)
 }
 
-func (s *AuthService) generateToken(userID string, role domain.Role) (string, error) {
+func (s *Auth) generateToken(userID string, role domain.Role) (string, error) {
 	claims := jwt.MapClaims{
 		"user_id": userID,
 		"role":    string(role),

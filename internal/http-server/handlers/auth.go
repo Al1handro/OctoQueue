@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 
 	"OctoQueue/internal/domain"
@@ -8,10 +9,10 @@ import (
 )
 
 type AuthHandler struct {
-	svc *service.AuthService
+	svc service.AuthService
 }
 
-func NewAuthHandler(svc *service.AuthService) *AuthHandler {
+func NewAuthHandler(svc service.AuthService) *AuthHandler {
 	return &AuthHandler{svc: svc}
 }
 
@@ -31,7 +32,12 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 	user, err := h.svc.Register(r.Context(), req.Email, req.Password, domain.RoleUser)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to register user")
+		switch {
+		case errors.Is(err, service.ErrEmailTaken):
+			writeError(w, http.StatusConflict, "EMAIL_TAKEN", "email already registered")
+		default:
+			writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to register user")
+		}
 		return
 	}
 	writeJSON(w, 201, map[string]any{"user": user})

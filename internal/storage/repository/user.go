@@ -21,7 +21,6 @@ func (s *pgUserRepo) Pool() *pgxpool.Pool {
 	return s.pool
 }
 
-
 func (s *pgUserRepo) Close() {
 	s.pool.Close()
 }
