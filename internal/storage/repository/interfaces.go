@@ -8,7 +8,7 @@ import (
 
 //go:generate go run github.com/vektra/mockery/v2@latest --name=UserRepository --output=./mocks
 type UserRepository interface {
-	CreateUser(ctx context.Context, user *domain.User) error
+	CreateUser(ctx context.Context, user *domain.User) error 
 	GetByEmail(ctx context.Context, email string) (*domain.User, error)
 	GetUser(ctx context.Context, id string) (*domain.User, error)
 	// GetByID(ctx context.Context, id string) (*domain.User, error)

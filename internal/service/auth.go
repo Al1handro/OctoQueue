@@ -13,7 +13,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-var ErrEmailTaken = errors.New("Email already registred")
+var ErrEmailTaken = errors.New("Email already registered")
 
 type Auth struct {
 	users     repository.UserRepository
@@ -38,7 +38,10 @@ func (s *Auth) Register(ctx context.Context, email, password string, role domain
 	}
 
 	if err := s.users.CreateUser(ctx, u); err != nil {
-		return nil, fmt.Errorf("error creating user: %w", domain.ErrInvalidRequest)
+		if errors.Is(err, repository.ErrDuplicateEmail) {
+			return nil, ErrEmailTaken
+		}
+		return nil, fmt.Errorf("creating user: %w", err)
 	}
 	return u, nil
 }

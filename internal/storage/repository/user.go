@@ -3,11 +3,15 @@ package repository
 import (
 	"OctoQueue/internal/domain"
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+var ErrDuplicateEmail = errors.New("email already taken")
 
 type pgUserRepo struct {
 	pool *pgxpool.Pool
@@ -28,18 +32,25 @@ func (s *pgUserRepo) Close() {
 func (s *pgUserRepo) CreateUser(ctx context.Context, user *domain.User) error {
 	const op = "storage.pgsql.CreateUser"
 
-	_, err := s.Pool().Exec(ctx,
+	_, err := s.pool.Exec(ctx,
 		`INSERT INTO users (email, password_hash, role, created_at) VALUES ($1,$2,$3,$4)`,
 		user.Email, user.Password, string(user.Role), user.CreatedAt,
 	)
-	return err
+	if err != nil {
+        var pgErr *pgconn.PgError
+        if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+            return ErrDuplicateEmail
+        }
+        return fmt.Errorf("%s: creating user: %w", op, err)
+    }
+    return nil
 }
 
 func (s *pgUserRepo) GetUser(ctx context.Context, id string) (*domain.User, error) {
 	const op = "storage.pgsql.GetUser"
 	
 	var u domain.User
-	err := s.Pool().QueryRow(ctx, `
+	err := s.pool.QueryRow(ctx, `
 	SELECT id, email, password, role, created_at
 		FROM users
 		WHERE id = $1
@@ -56,7 +67,7 @@ func (s *pgUserRepo) GetUser(ctx context.Context, id string) (*domain.User, erro
 func (s *pgUserRepo) GetByEmail(ctx context.Context, email string) (*domain.User, error) {
 	const op = "storage.pgsql.GetByEmail"		
 	var u domain.User
-	err := s.Pool().QueryRow(ctx, `
+	err := s.pool.QueryRow(ctx, `
 	SELECT id, email, password_hash, role, created_at
 		FROM users
 		WHERE email = $1
