@@ -73,7 +73,7 @@ func main() {
 
 	router := chi.NewRouter()
 
-	authMW := auth.Auth(cfg.JWTSecret)
+	authMW := auth.Auth(log, cfg.JWTSecret)
 	
 	router.Use(middleware.RequestID)
 	router.Use(middleware.RealIP)

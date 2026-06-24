@@ -4,24 +4,32 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 
 	"OctoQueue/internal/domain"
+	"OctoQueue/internal/lib/logger/sl"
 
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )
 
-func Auth(secret string) func(http.Handler) http.Handler {
+func Auth(log *slog.Logger, secret string) func(http.Handler) http.Handler {
+	const op = "middleware.auth.Auth"
+	
 	if secret == "" {
-        panic("auth: JWT secret must not be empty")
+		panic("auth: JWT secret must not be empty")
     }
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			logger := log.With(slog.String("op", op), slog.String("request_id", middleware.GetReqID(r.Context())))
+
 			authHeader := r.Header.Get("Authorization")
 			parts := strings.Fields(authHeader)
 			if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
+				logger.Error("Error authHeader")
 				writeUnauthorized(w)
 				return
 			}
@@ -30,23 +38,25 @@ func Auth(secret string) func(http.Handler) http.Handler {
 			token, err := jwt.ParseWithClaims(tokenStr, claims,
 				func(t *jwt.Token) (interface{}, error) {
 					if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+						logger.Error("unexpected signing method", t.Header["alg"])
 						return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
 					}
 					return []byte(secret), nil
 				})
 			if err != nil || !token.Valid {
-				fmt.Println("Invalid token") // Debugging log
+				logger.Error("Invalid token", sl.Err(err))
 				writeUnauthorized(w)
 				return
 			}
 			userIDStr, ok := claims["user_id"].(string)
 			if !ok {
-				fmt.Println("User ID not found in claims") // Debugging log
+				logger.Error("User ID not found in claims")
 				writeUnauthorized(w)
 				return
 			}
 			userID, err := uuid.Parse(userIDStr)
 			if err != nil {
+				logger.Error("failed to parse user ID: %v", sl.Err(err))
 				writeUnauthorized(w)
 				return
 			}

@@ -44,6 +44,8 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
+	const op = "handlers.AuthHandler.Login"
+
 	var req struct {
 		Email    string `json:"email"`
 		Password string `json:"password"`

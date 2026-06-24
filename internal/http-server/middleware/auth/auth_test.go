@@ -3,12 +3,14 @@ package auth
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
 	"OctoQueue/internal/domain"
+
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )
@@ -40,7 +42,7 @@ func validClaims(userID string) jwt.MapClaims {
 }
 
 func TestAuth_NoAuthHeader(t *testing.T) {
-	handler := Auth(testSecret)(okHandler())
+	handler := Auth(slog.Default(), testSecret)(okHandler())
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
 
@@ -61,7 +63,7 @@ func TestAuth_MalformedHeader(t *testing.T) {
 
 	for _, header := range cases {
 		t.Run(header, func(t *testing.T) {
-			handler := Auth(testSecret)(okHandler())
+			handler := Auth(slog.Default(), testSecret)(okHandler())
 			req := httptest.NewRequest(http.MethodGet, "/", nil)
 			req.Header.Set("Authorization", header)
 			rec := httptest.NewRecorder()
@@ -77,7 +79,7 @@ func TestAuth_MalformedHeader(t *testing.T) {
 
 func TestAuth_InvalidSignature(t *testing.T) {
 	token := makeToken(t, "wrong-secret", validClaims(uuid.NewString()))
-	handler := Auth(testSecret)(okHandler())
+	handler := Auth(slog.Default(), testSecret)(okHandler())
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
@@ -98,7 +100,7 @@ func TestAuth_WrongSigningMethod(t *testing.T) {
 		t.Fatalf("failed to sign: %v", err)
 	}
 
-	handler := Auth(testSecret)(okHandler())
+	handler := Auth(slog.Default(), testSecret)(okHandler())
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.Header.Set("Authorization", "Bearer "+signed)
 	rec := httptest.NewRecorder()
@@ -118,7 +120,7 @@ func TestAuth_ExpiredToken(t *testing.T) {
 	}
 	token := makeToken(t, testSecret, claims)
 
-	handler := Auth(testSecret)(okHandler())
+	handler := Auth(slog.Default(), testSecret)(okHandler())
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
@@ -138,7 +140,7 @@ func TestAuth_MissingUserID(t *testing.T) {
 	}
 	token := makeToken(t, testSecret, claims)
 
-	handler := Auth(testSecret)(okHandler())
+	handler := Auth(slog.Default(), testSecret)(okHandler())
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
@@ -153,7 +155,7 @@ func TestAuth_MissingUserID(t *testing.T) {
 func TestAuth_InvalidUserIDFormat(t *testing.T) {
 	token := makeToken(t, testSecret, validClaims("not-a-uuid"))
 
-	handler := Auth(testSecret)(okHandler())
+	handler := Auth(slog.Default(), testSecret)(okHandler())
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
@@ -179,7 +181,7 @@ func TestAuth_Success(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	handler := Auth(testSecret)(captureHandler)
+	handler := Auth(slog.Default(), testSecret)(captureHandler)
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
@@ -214,7 +216,7 @@ func TestAuth_MissingRole_StillSucceeds(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	handler := Auth(testSecret)(captureHandler)
+	handler := Auth(slog.Default(), testSecret)(captureHandler)
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
@@ -235,7 +237,7 @@ func TestAuth_PanicsOnEmptySecret(t *testing.T) {
 			t.Error("expected panic on empty secret, got none")
 		}
 	}()
-	Auth("")
+	Auth(slog.Default(), "")
 }
 
 func TestRequireRole_Allowed(t *testing.T) {
