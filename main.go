@@ -67,7 +67,7 @@ func main() {
 	defer storage.Close()
 
 	userRepo := repository.NewUserRepository(storage.Pool())
-	authSvc := service.NewAuthService(userRepo, cfg.JWTSecret)
+	authSvc := service.NewAuthService(userRepo, cfg.JWTSecret, log)
 
 	log.Info("Application started")
 
@@ -81,7 +81,7 @@ func main() {
 	router.Use(middleware.Recoverer)
 	router.Use(middleware.URLFormat)
 	
-	authH := handlers.NewAuthHandler(authSvc)
+	authH := handlers.NewAuthHandler(authSvc, log)
 	router.Post("/register", authH.Register)
 	router.Post("/login", authH.Login)
 
