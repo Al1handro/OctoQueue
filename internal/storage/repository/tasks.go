@@ -3,6 +3,7 @@ package repository
 import (
 	"OctoQueue/internal/domain"
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -129,12 +130,12 @@ func (s *Storage) UpdateTask(ctx context.Context, p domain.UpdateTaskParams) (*d
 		p.MaxRetries, p.Tags, p.TargetHost,
 	)
 
-	t, err := scanTask(row)
+	tag, err := scanTask(row)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 
-	return t, nil
+	return tag, nil
 }
 
 func (s *Storage) UpdateTaskStatus(ctx context.Context, id, status string, nextRunAt *time.Time) error {
@@ -157,7 +158,7 @@ func (s *Storage) UpdateTaskStatus(ctx context.Context, id, status string, nextR
 		return fmt.Errorf("%s: %w", op, err)
 	}
 	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("%s: task not found: %s", op, id)
+		return fmt.Errorf("%s: %w", op, domain.ErrNotFound)
 	}
 
 	return nil
@@ -175,7 +176,7 @@ func (s *Storage) DeleteTask(ctx context.Context, id string) error {
 		return fmt.Errorf("%s: %w", op, err)
 	}
 	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("%s: task not found: %s", op, id)
+		return fmt.Errorf("%s: %w", op, domain.ErrNotFound)
 	}
 
 	return nil
@@ -384,8 +385,8 @@ func scanTask(s scanner) (*domain.Task, error) {
 		&t.CreatedAt, &t.UpdatedAt, &t.DeletedAt, &t.UserID,
 	)
 	if err != nil {
-		if err == pgx.ErrNoRows {
-			return nil, fmt.Errorf("task not found")
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrNotFound
 		}
 		return nil, err
 	}
@@ -402,8 +403,8 @@ func scanExecution(s scanner) (*domain.TaskExecution, error) {
 		&e.WorkerID, &e.CreatedAt,
 	)
 	if err != nil {
-		if err == pgx.ErrNoRows {
-			return nil, fmt.Errorf("execution not found")
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrNotFound
 		}
 		return nil, err
 	}

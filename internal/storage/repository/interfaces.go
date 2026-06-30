@@ -8,7 +8,7 @@ import (
 
 //go:generate go run github.com/vektra/mockery/v2@latest --name=UserRepository --output=./mocks
 type UserRepository interface {
-	CreateUser(ctx context.Context, user *domain.User) error 
+	CreateUser(ctx context.Context, user *domain.User) error
 	GetByEmail(ctx context.Context, email string) (*domain.User, error)
 	GetUser(ctx context.Context, id string) (*domain.User, error)
 	// GetByID(ctx context.Context, id string) (*domain.User, error)
@@ -39,11 +39,10 @@ type ExecutionTracker interface {
 	FinishExecution(ctx context.Context, p domain.FinishExecutionParams) (*domain.TaskExecution, error)
 	ListExecutions(ctx context.Context, taskID string, limit int) ([]*domain.TaskExecution, error)
 }
-	
+
 //go:generate go run github.com/vektra/mockery/v2@latest --name=LockManager --output=./mocks
-type LockManager interface {	
+type LockManager interface {
 	AcquireLock(ctx context.Context, taskID, workerID string, ttl time.Duration) (*domain.TaskLock, error)
 	ReleaseLock(ctx context.Context, taskID, workerID string) error
 	CleanExpiredLocks(ctx context.Context) (int64, error)
 }
-

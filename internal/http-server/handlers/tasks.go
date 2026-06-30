@@ -41,18 +41,6 @@ type UpdateTaskRequest struct {
 	TargetHost *string  `json:"target_host,omitempty"`
 }
 
-// // Helpers
-
-// func writeJSON(w http.ResponseWriter, status int, data any) {
-// 	w.Header().Set("Content-Type", "application/json")
-// 	w.WriteHeader(status)
-// 	_ = json.NewEncoder(w).Encode(data)
-// }
-
-// func writeError(w http.ResponseWriter, status int, msg string) {
-// 	writeJSON(w, status, map[string]string{"error": msg})
-// }
-
 // Status GET /status
 
 func Status(log *slog.Logger) http.HandlerFunc {
@@ -135,7 +123,7 @@ func CreateTask(log *slog.Logger, st repository.TaskRepository) http.HandlerFunc
 			Tags:       req.Tags,
 			CreatedBy:  req.CreatedBy,
 			TargetHost: req.TargetHost,
-			UserID: userId,
+			UserID:     userId,
 		})
 		if err != nil {
 			logger.Error("failed to create task", sl.Err(err))
@@ -163,8 +151,12 @@ func GetTask(log *slog.Logger, st repository.TaskRepository) http.HandlerFunc {
 
 		task, err := st.GetTaskByID(r.Context(), id)
 		if err != nil {
+			if errors.Is(err, domain.ErrNotFound) {
+				writeError(w, http.StatusNotFound, "TASK_NOT_FOUND", "task not found")
+				return
+			}
 			logger.Error("failed to get task", sl.Err(err), slog.String("task_id", id))
-			writeError(w, http.StatusNotFound, "TASK_NOT_FOUND", "task not found")
+			writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to get task")
 			return
 		}
 
@@ -272,6 +264,10 @@ func UpdateTask(log *slog.Logger, st repository.TaskWriter) http.HandlerFunc {
 			TargetHost: req.TargetHost,
 		})
 		if err != nil {
+			if errors.Is(err, domain.ErrNotFound) {
+				writeError(w, http.StatusNotFound, "TASK_NOT_FOUND", "task not found")
+				return
+			}
 			logger.Error("failed to update task", sl.Err(err), slog.String("task_id", id))
 			writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to update task")
 			return
@@ -296,6 +292,10 @@ func DeleteTask(log *slog.Logger, st repository.TaskWriter) http.HandlerFunc {
 		}
 
 		if err := st.DeleteTask(r.Context(), id); err != nil {
+			if errors.Is(err, domain.ErrNotFound) {
+				writeError(w, http.StatusNotFound, "TASK_NOT_FOUND", "task not found")
+				return
+			}
 			logger.Error("failed to delete task", sl.Err(err), slog.String("task_id", id))
 			writeError(w, http.StatusNotFound, "TASK_NOT_FOUND", "task not found")
 			return
@@ -323,6 +323,10 @@ func GetTaskExecutions(log *slog.Logger, st repository.ExecutionTracker) http.Ha
 
 		executions, err := st.ListExecutions(r.Context(), id, limit)
 		if err != nil {
+			if errors.Is(err, domain.ErrNotFound) {
+				writeError(w, http.StatusNotFound, "TASK_NOT_FOUND", "task not found")
+				return
+			}
 			logger.Error("failed to get executions", sl.Err(err), slog.String("task_id", id))
 			writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to get executions")
 			return

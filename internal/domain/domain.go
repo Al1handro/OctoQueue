@@ -23,11 +23,6 @@ const (
 
 var (
 	ErrNotFound        = errors.New("not found")
-	ErrRoomNotFound    = errors.New("room not found")
-	ErrSlotNotFound    = errors.New("slot not found")
-	ErrBookingNotFound = errors.New("booking not found")
-	ErrScheduleExists  = errors.New("schedule already exists")
-	ErrSlotBooked      = errors.New("slot already booked")
 	ErrForbidden       = errors.New("forbidden")
 	ErrInvalidRequest  = errors.New("invalid request")
 	ErrUnauthorized    = errors.New("unauthorized")
