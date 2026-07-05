@@ -7,8 +7,12 @@ import (
 	"OctoQueue/internal/storage/repository/mocks"
 	"context"
 	"errors"
+	"io"
+	"log/slog"
 	"testing"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/mock"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -16,6 +20,8 @@ import (
 const testJWTSecret = "test-secret"
 
 func TestAuth_Register(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
 	tests := []struct {
 		name      string
 		email     string
@@ -37,31 +43,39 @@ func TestAuth_Register(t *testing.T) {
 			checkHash: true,
 		},
 		{
-			name:     "the email is already busy",
-			email:    "taken@example.com",
-			password: "secret123",
-			role:     domain.RoleUser,
-			repoErr:  repository.ErrDuplicateEmail,
-			wantErr:  service.ErrEmailTaken,
-			wantUser: false,
+			name:      "the email is already busy",
+			email:     "taken@example.com",
+			password:  "secret123",
+			role:      domain.RoleUser,
+			repoErr:   repository.ErrDuplicateEmail,
+			wantErr:   service.ErrEmailTaken,
+			wantUser:  false,
+			checkHash: false,
 		},
 		{
-			name:     "database error",
-			email:    "user@example.com",
-			password: "secret123",
-			role:     domain.RoleUser,
-			repoErr:  errors.New("connection refused"),
-			wantErr:  errors.New("any"),
-			wantUser: false,
+			name:      "database error",
+			email:     "user@example.com",
+			password:  "secret123",
+			role:      domain.RoleUser,
+			repoErr:   errors.New("connection refused"),
+			wantErr:   errors.New("any"),
+			wantUser:  false,
+			checkHash: false,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			repo := mocks.NewUserRepository(t)
-			repo.On("CreateUser", context.Background(), mock.AnythingOfType("*domain.User")).
+			repo.On("CreateUser", mock.Anything, mock.AnythingOfType("*domain.User")).
+				Run(func(args mock.Arguments) {
+					u := args.Get(1).(*domain.User)
+					if u.Password == tt.password {
+						t.Error("password passed to repository must already be hashed")
+					}
+				}).
 				Return(tt.repoErr)
-			svc := service.NewAuthService(repo, testJWTSecret)
-			user, err := svc.Register(context.Background(), "user@example.com", "secret123", domain.RoleUser)
+			svc := service.NewAuthService(repo, testJWTSecret, logger)
+			user, err := svc.Register(context.Background(), tt.email, tt.password, tt.role)
 
 			if tt.wantErr == nil && err != nil {
 				t.Fatalf("expected no error, got %v", err)
@@ -69,12 +83,6 @@ func TestAuth_Register(t *testing.T) {
 
 			if tt.wantErr != nil && err == nil {
 				t.Fatalf("expected error, got nil")
-			}
-
-			if tt.wantErr != nil && !errors.Is(tt.wantErr, service.ErrEmailTaken) {
-				if !errors.Is(err, service.ErrEmailTaken) {
-					t.Errorf("expected ErrEmailTaken, got %v", err)
-				}
 			}
 
 			if tt.repoErr != nil && !errors.Is(tt.repoErr, repository.ErrDuplicateEmail) {
@@ -86,6 +94,9 @@ func TestAuth_Register(t *testing.T) {
 			if tt.wantUser {
 				if user == nil {
 					t.Fatal("expected user, got nil")
+				}
+				if user.ID != uuid.Nil {
+					t.Errorf("expected user ID to be zero, got %s", user.ID)
 				}
 				if user.Email != tt.email {
 					t.Errorf("expected email %s, got %s", tt.email, user.Email)
@@ -114,37 +125,99 @@ func TestAuth_Register(t *testing.T) {
 	}
 }
 
-// func TestAuth_Login(t *testing.T) {
-// 	tests := []struct {
-// 		name      string
-// 		email     string
-// 		password  string
-// 		role      domain.Role
-// 		repoErr   error
-// 		wantErr   error
-// 		wantUser  bool
-// 		checkHash bool
-// 	}{
-// 		// TODO: Add test cases.
-// 	}
-// 	for _, tt := range tests {
-// 		t.Run(tt.name, func(t *testing.T) {
-// 			// TODO: construct the receiver type.
-// 			var s service.Auth
-// 			got, gotErr := s.Login(context.Background(), tt.email, tt.password)
-// 			if gotErr != nil {
-// 				if !tt.wantErr {
-// 					t.Errorf("Login() failed: %v", gotErr)
-// 				}
-// 				return
-// 			}
-// 			if tt.wantErr {
-// 				t.Fatal("Login() succeeded unexpectedly")
-// 			}
-// 			// TODO: update the condition below to compare got with tt.want.
-// 			if true {
-// 				t.Errorf("Login() = %v, want %v", got, tt.want)
-// 			}
-// 		})
-// 	}
-// }
+func TestAuth_Login(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	validPassword := "secret123"
+	hash, err := bcrypt.GenerateFromPassword([]byte(validPassword), bcrypt.DefaultCost)
+	if err != nil {
+		t.Fatalf("failed to hash password: %v", err)
+	}
+
+	existingUser := &domain.User{
+		ID:        uuid.New(),
+		Email:     "user@example.com",
+		Password:  string(hash),
+		Role:      domain.RoleUser,
+		CreatedAt: time.Now().UTC(),
+	}
+
+	tests := []struct {
+		name      string
+		email     string
+		password  string
+		repoUser  *domain.User
+		repoErr   error
+		wantErr   error
+		wantToken bool
+	}{
+		{
+			name:      "successful login",
+			email:     existingUser.Email,
+			password:  validPassword,
+			repoUser:  existingUser,
+			repoErr:   nil,
+			wantErr:   nil,
+			wantToken: true,
+		},
+		{
+			name:      "user not found",
+			email:     "unknown@example.com",
+			password:  validPassword,
+			repoUser:  nil,
+			repoErr:   domain.ErrNotFound,
+			wantErr:   domain.ErrUnauthorized,
+			wantToken: false,
+		},
+		{
+			name:      "wrong password",
+			email:     existingUser.Email,
+			password:  "wrong-password",
+			repoUser:  existingUser,
+			repoErr:   nil,
+			wantErr:   domain.ErrUnauthorized,
+			wantToken: false,
+		},
+		{
+			name:      "database error",
+			email:     existingUser.Email,
+			password:  validPassword,
+			repoUser:  nil,
+			repoErr:   errors.New("connection refused"),
+			wantErr:   errors.New("any"),
+			wantToken: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := mocks.NewUserRepository(t)
+			repo.On("GetByEmail", mock.Anything, tt.email).
+				Return(tt.repoUser, tt.repoErr)
+
+			svc := service.NewAuthService(repo, testJWTSecret, logger)
+			token, err := svc.Login(context.Background(), tt.email, tt.password)
+
+			if tt.wantErr == nil && err != nil {
+				t.Fatalf("expected no error, got %v", err)
+			}
+			if tt.wantErr != nil && err == nil {
+				t.Fatal("expected error, got nil")
+			}
+
+			if errors.Is(tt.wantErr, domain.ErrUnauthorized) {
+				if !errors.Is(err, domain.ErrUnauthorized) {
+					t.Errorf("expected ErrUnauthorized, got %v", err)
+				}
+			}
+
+			if tt.wantToken {
+				if token == "" {
+					t.Error("expected non-empty token")
+				}
+			} else if token != "" {
+				t.Errorf("expected empty token, got %q", token)
+			}
+		})
+	}
+}

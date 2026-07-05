@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 
-	"OctoQueue/internal/storage/mocks"
+	"OctoQueue/internal/storage/repository/mocks"
 	"log/slog"
 	"testing"
 

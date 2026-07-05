@@ -58,7 +58,7 @@ func (s *Auth) Register(ctx context.Context, email, password string, role domain
 }
 
 func (s *Auth) Login(ctx context.Context, email, password string) (string, error) {
-	const op = "internal.service.Register"
+	const op = "internal.service.Login"
 	log := s.log.With(slog.String("op", op), slog.String("request_id", middleware.GetReqID(ctx)))
 
 	u, err := s.users.GetByEmail(ctx, email)
