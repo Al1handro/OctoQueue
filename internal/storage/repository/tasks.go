@@ -49,7 +49,7 @@ func (s *Storage) GetTaskByID(ctx context.Context, id string) (*domain.Task, err
 			id, name, type, payload, schedule, timezone,
 			status, next_run_at, last_run_at, started_at,
 			retries, max_retries, retry_delay, timeout,
-			target_host, tags, created_by, created_at, updated_at, deleted_at
+			target_host, tags, created_by, created_at, updated_at, deleted_at, user_id
 		FROM tasks
 		WHERE id = $1 AND deleted_at IS NULL`,
 		id,
@@ -125,7 +125,7 @@ func (s *Storage) UpdateTask(ctx context.Context, p domain.UpdateTaskParams) (*d
 			id, name, type, payload, schedule, timezone,
 			status, next_run_at, last_run_at, started_at,
 			retries, max_retries, retry_delay, timeout,
-			target_host, tags, created_by, created_at, updated_at, deleted_at`,
+			target_host, tags, created_by, created_at, updated_at, deleted_at, user_id`,
 		p.ID, p.Name, p.Payload, p.Schedule, p.Timezone,
 		p.MaxRetries, p.Tags, p.TargetHost,
 	)

@@ -4,6 +4,7 @@ import (
 	"OctoQueue/internal/domain"
 	"OctoQueue/internal/storage/repository"
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"testing"
@@ -19,6 +20,22 @@ func ptr[T any](v T) *T {
 	return &v
 }
 
+func testUserRepository(t *testing.T, storage *repository.Storage) *domain.User {
+	domainUser := &domain.User{
+		Email:     fmt.Sprintf("test%d@example.com", time.Now().Unix()),
+		Password:  "hashedpassword",
+		Role:      domain.RoleUser,
+		CreatedAt: time.Now(),
+	}
+
+	s := repository.NewUserRepository(storage.Pool())
+	err := s.CreateUser(context.Background(), domainUser)
+	if err != nil {
+		t.Fatalf("could not create user: %v", err)
+	}
+	return domainUser
+}
+
 func TestStorage_CreateTask(t *testing.T) {
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 
@@ -26,6 +43,7 @@ func TestStorage_CreateTask(t *testing.T) {
 	if err != nil {
 		t.Fatalf("could not connect to test db: %v", err)
 	}
+	user := testUserRepository(t, s)
 
 	var CreatedIDs []string
 
@@ -51,6 +69,7 @@ func TestStorage_CreateTask(t *testing.T) {
 				Tags:       []string{"production", "critical"},
 				CreatedBy:  &createdBy,
 				TargetHost: &targetHost,
+				UserID:     user.ID,
 			},
 			want: func(t *testing.T, got *domain.Task) {
 				t.Helper()
@@ -86,6 +105,7 @@ func TestStorage_CreateTask(t *testing.T) {
 				Tags:      []string{"deployment", "test"},
 				Timezone:  "UTC",
 				NextRunAt: func() *time.Time { t := time.Now().Add(5 * time.Minute); return &t }(),
+				UserID:    user.ID,
 			},
 			want: func(t *testing.T, got *domain.Task) {
 				t.Helper()
@@ -144,6 +164,8 @@ func TestStorage_CreateTask(t *testing.T) {
 	for _, id := range CreatedIDs {
 		_, _ = s.Pool().Exec(context.Background(), "DELETE FROM tasks WHERE id = $1", id)
 	}
+
+	_, _ = s.Pool().Exec(context.Background(), "DELETE FROM users WHERE id = $1", user.ID)
 }
 
 func TestStorage_GetTaskByID(t *testing.T) {
@@ -153,6 +175,7 @@ func TestStorage_GetTaskByID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("could not connect to test db: %v", err)
 	}
+	user := testUserRepository(t, s)
 
 	schedule := "0 0 * * *"
 	createdBy := "test-get-by-id"
@@ -165,6 +188,7 @@ func TestStorage_GetTaskByID(t *testing.T) {
 		Timezone:  "UTC",
 		CreatedBy: &createdBy,
 		Tags:      []string{"test"},
+		UserID:    user.ID,
 	})
 
 	if err != nil {
@@ -207,6 +231,8 @@ func TestStorage_GetTaskByID(t *testing.T) {
 	if string(got.Tags[0]) != string(created.Tags[0]) {
 		t.Errorf("Tags[0] = %q, want %q", string(got.Tags[0]), string(created.Tags[0]))
 	}
+
+	_, _ = s.Pool().Exec(context.Background(), "DELETE FROM users WHERE id = $1", user.ID)
 }
 
 func TestStorage_ListTasks(t *testing.T) {
@@ -216,6 +242,7 @@ func TestStorage_ListTasks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("could not connect to test db: %v", err)
 	}
+	user := testUserRepository(t, s)
 
 	schedule := "0 0 * * *"
 	createdBy := "test-list"
@@ -233,6 +260,7 @@ func TestStorage_ListTasks(t *testing.T) {
 			Timezone:  "UTC",
 			CreatedBy: &createdBy,
 			Tags:      tags,
+			UserID:    user.ID,
 		})
 		if err != nil {
 			t.Fatalf("could not create task (%q): %+v", taskType, err)
@@ -249,7 +277,8 @@ func TestStorage_ListTasks(t *testing.T) {
 
 	t.Run("list all tasks", func(t *testing.T) {
 		got, err := s.ListTasks(context.Background(), domain.ListTasksParams{
-			Limit: 10,
+			Limit:  10,
+			UserID: user.ID,
 		})
 		if err != nil {
 			t.Fatalf("ListTasks() error = %v", err)
@@ -264,8 +293,9 @@ func TestStorage_ListTasks(t *testing.T) {
 		taskType := "http_call"
 
 		got, err := s.ListTasks(context.Background(), domain.ListTasksParams{
-			Type:  &taskType,
-			Limit: 10,
+			Type:   &taskType,
+			Limit:  10,
+			UserID: user.ID,
 		})
 
 		if err != nil {
@@ -285,8 +315,9 @@ func TestStorage_ListTasks(t *testing.T) {
 
 	t.Run("filter by tags", func(t *testing.T) {
 		got, err := s.ListTasks(context.Background(), domain.ListTasksParams{
-			Tags:  []string{"email"},
-			Limit: 10,
+			Tags:   []string{"email"},
+			Limit:  10,
+			UserID: user.ID,
 		})
 		if err != nil {
 			t.Fatalf("ListTasks() error = %v", err)
@@ -303,7 +334,8 @@ func TestStorage_ListTasks(t *testing.T) {
 
 	t.Run("limit works", func(t *testing.T) {
 		got, err := s.ListTasks(context.Background(), domain.ListTasksParams{
-			Limit: 2,
+			Limit:  2,
+			UserID: user.ID,
 		})
 		if err != nil {
 			t.Fatalf("ListTasks() error = %v", err)
@@ -316,7 +348,8 @@ func TestStorage_ListTasks(t *testing.T) {
 
 	t.Run("offset works", func(t *testing.T) {
 		first, err := s.ListTasks(context.Background(), domain.ListTasksParams{
-			Limit: 1,
+			Limit:  1,
+			UserID: user.ID,
 		})
 		if err != nil {
 			t.Fatalf("ListTasks() error = %v", err)
@@ -325,6 +358,7 @@ func TestStorage_ListTasks(t *testing.T) {
 		second, err := s.ListTasks(context.Background(), domain.ListTasksParams{
 			Limit:  1,
 			Offset: 1,
+			UserID: user.ID,
 		})
 		if err != nil {
 			t.Fatalf("ListTasks() error = %v", err)
@@ -343,8 +377,9 @@ func TestStorage_ListTasks(t *testing.T) {
 		taskType := "unknown-type"
 
 		got, err := s.ListTasks(context.Background(), domain.ListTasksParams{
-			Type:  &taskType,
-			Limit: 10,
+			Type:   &taskType,
+			Limit:  10,
+			UserID: user.ID,
 		})
 		if err != nil {
 			t.Fatalf("ListTasks() error = %v", err)
@@ -363,19 +398,25 @@ func TestStorage_ListTasks(t *testing.T) {
 				task.ID,
 			)
 		}
+		_, _ = s.Pool().Exec(context.Background(), "DELETE FROM users WHERE id = $1", user.ID)
 	})
 
 	_ = taskA
 	_ = taskC
 
 	// TODO: add more tests for filtering
+
 }
 
 func TestStorage_UpdateTask(t *testing.T) {
-	t.Parallel()
-
 	ctx := context.Background()
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	s, err := repository.NewStorage(context.Background(), testDSN, log)
+	if err != nil {
+		t.Fatalf("could not connect to test db: %v", err)
+	}
+	user := testUserRepository(t, s)
 
 	tests := []struct {
 		name string
@@ -406,6 +447,7 @@ func TestStorage_UpdateTask(t *testing.T) {
 						Timezone:  "UTC",
 						CreatedBy: &createdBy,
 						Tags:      tags,
+						UserID:    user.ID,
 					})
 					if err != nil {
 						t.Fatalf("could not create task (%q): %+v", taskType, err)
@@ -462,6 +504,7 @@ func TestStorage_UpdateTask(t *testing.T) {
 					Timezone:  "UTC",
 					CreatedBy: &createdBy,
 					Tags:      []string{"keep"},
+					UserID:    user.ID,
 				})
 				if err != nil {
 					t.Fatalf("create task: %v", err)
@@ -506,7 +549,6 @@ func TestStorage_UpdateTask(t *testing.T) {
 		tt := tt
 
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
 
 			s, err := repository.NewStorage(ctx, tt.dsn, log)
 			if err != nil {
@@ -537,12 +579,19 @@ func TestStorage_UpdateTask(t *testing.T) {
 			}
 		})
 	}
+
+	_, _ = s.Pool().Exec(context.Background(), "DELETE FROM users WHERE id = $1", user.ID)
 }
 
 func TestStorage_UpdateTaskStatus(t *testing.T) {
-	t.Parallel()
-
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	s, err := repository.NewStorage(context.Background(), testDSN, log)
+	if err != nil {
+		t.Fatalf("could not connect to test db: %v", err)
+	}
+	user := testUserRepository(t, s)
+	created := make([]*domain.Task, 0)
 
 	tests := []struct {
 		name string
@@ -573,10 +622,12 @@ func TestStorage_UpdateTaskStatus(t *testing.T) {
 					Timezone:  "UTC",
 					CreatedBy: &createdBy,
 					Tags:      []string{"a"},
+					UserID:    user.ID,
 				})
 				if err != nil {
 					t.Fatalf("create: %v", err)
 				}
+				created = append(created, task)
 				return task.ID
 			},
 
@@ -604,10 +655,12 @@ func TestStorage_UpdateTaskStatus(t *testing.T) {
 					Payload:  []byte(`{}`),
 					Tags:     []string{"a"},
 					Timezone: "UTC",
+					UserID:   user.ID,
 				})
 				if err != nil {
 					t.Fatalf("create: %v", err)
 				}
+				created = append(created, task)
 				return task.ID
 			},
 
@@ -640,10 +693,12 @@ func TestStorage_UpdateTaskStatus(t *testing.T) {
 					Payload:  []byte(`{}`),
 					Tags:     []string{"a"},
 					Timezone: "UTC",
+					UserID:   user.ID,
 				})
 				if err != nil {
 					t.Fatalf("create: %v", err)
 				}
+				created = append(created, task)
 				return task.ID
 			},
 
@@ -701,6 +756,18 @@ func TestStorage_UpdateTaskStatus(t *testing.T) {
 			}
 		})
 	}
+
+	t.Cleanup(func() {
+		for _, task := range created {
+			_, _ = s.Pool().Exec(
+				context.Background(),
+				"DELETE FROM tasks WHERE id = $1",
+				task.ID,
+			)
+		}
+	})
+
+	_, _ = s.Pool().Exec(context.Background(), "DELETE FROM users WHERE id = $1", user.ID)
 } //TODO: DELETE from tasks where id = ...
 
 func ptrTime(t time.Time) *time.Time {
@@ -709,6 +776,12 @@ func ptrTime(t time.Time) *time.Time {
 
 func TestStorage_DeleteTask(t *testing.T) {
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	s, err := repository.NewStorage(context.Background(), testDSN, log)
+	if err != nil {
+		t.Fatalf("could not connect to test db: %v", err)
+	}
+	user := testUserRepository(t, s)
 
 	tests := []struct {
 		name    string
@@ -728,6 +801,7 @@ func TestStorage_DeleteTask(t *testing.T) {
 					Payload:  []byte(`{}`),
 					Tags:     []string{"test"},
 					Timezone: "UTC",
+					UserID:   user.ID,
 				})
 				if err != nil {
 					t.Fatalf("create task: %v", err)
@@ -766,7 +840,7 @@ func TestStorage_DeleteTask(t *testing.T) {
 			_, err = s.GetTaskByID(t.Context(), id)
 			require.Error(t, err)
 
-			if !tt.wantErr {
+			if tt.wantErr {
 				require.Contains(t, err.Error(), "no rows in result set")
 			}
 		})
@@ -780,5 +854,4 @@ func TestStorage_DeleteTask(t *testing.T) {
 // 	}
 // }
 
-
-// TODO: add NewTestStorage t.Helper() 
+// TODO: add NewTestStorage t.Helper()
