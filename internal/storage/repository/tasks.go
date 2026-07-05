@@ -1,32 +1,36 @@
-package pgsql
+package repository
 
 import (
-	"OctoQueue/internal/storage"
+	"OctoQueue/internal/domain"
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 )
 
-func (s *Storage) CreateTask(ctx context.Context, p storage.CreateTaskParams) (*storage.Task, error) {
-	const op = "storage.pgsql.CreateTask"
+func (s *Storage) CreateTask(ctx context.Context, p domain.CreateTaskParams) (*domain.Task, error) {
+	const op = "storage.repository.CreateTask"
 
-	row := s.Pool().QueryRow(ctx, `
+	row := s.pool.QueryRow(ctx, `
 		INSERT INTO tasks (
 			name, type, payload, schedule, timezone,
-			next_run_at, max_retries, tags, created_by, target_host
+			next_run_at, max_retries, tags, created_by, 
+			target_host, user_id
 		) VALUES (
 			$1, $2, $3, $4, $5,
-			$6, $7, $8, $9, $10
+			$6, $7, $8, $9, $10,
+			$11
 		)
 		RETURNING
 			id, name, type, payload, schedule, timezone,
 			status, next_run_at, last_run_at, started_at,
 			retries, max_retries, retry_delay, timeout,
-			target_host, tags, created_by, created_at, updated_at, deleted_at`,
+			target_host, tags, created_by, created_at, 
+			updated_at, deleted_at, user_id`,
 		p.Name, p.Type, p.Payload, p.Schedule, p.Timezone,
-		p.NextRunAt, p.MaxRetries, p.Tags, p.CreatedBy, p.TargetHost,
+		p.NextRunAt, p.MaxRetries, p.Tags, p.CreatedBy, p.TargetHost, p.UserID,
 	)
 
 	t, err := scanTask(row)
@@ -37,10 +41,10 @@ func (s *Storage) CreateTask(ctx context.Context, p storage.CreateTaskParams) (*
 	return t, nil
 }
 
-func (s *Storage) GetTaskByID(ctx context.Context, id string) (*storage.Task, error) {
-	const op = "storage.pgsql.GetTaskByID"
+func (s *Storage) GetTaskByID(ctx context.Context, id string) (*domain.Task, error) {
+	const op = "storage.repository.GetTaskByID"
 
-	row := s.Pool().QueryRow(ctx, `
+	row := s.pool.QueryRow(ctx, `
 		SELECT
 			id, name, type, payload, schedule, timezone,
 			status, next_run_at, last_run_at, started_at,
@@ -59,34 +63,40 @@ func (s *Storage) GetTaskByID(ctx context.Context, id string) (*storage.Task, er
 	return t, nil
 }
 
-func (s *Storage) ListTasks(ctx context.Context, p storage.ListTasksParams) ([]*storage.Task, error) {
-	const op = "storage.pgsql.ListTasks"
+func (s *Storage) ListTasks(ctx context.Context, p domain.ListTasksParams) ([]*domain.Task, error) {
+	const op = "storage.repository.ListTasks"
 
-	if p.Limit == 0 {
+	if p.Limit <= 0 {
 		p.Limit = 50
 	}
 
-	rows, err := s.Pool().Query(ctx, `
+	if p.Limit > 100 {
+		p.Limit = 100
+	}
+
+	rows, err := s.pool.Query(ctx, `
 		SELECT
 			id, name, type, payload, schedule, timezone,
 			status, next_run_at, last_run_at, started_at,
 			retries, max_retries, retry_delay, timeout,
-			target_host, tags, created_by, created_at, updated_at, deleted_at
+			target_host, tags, created_by, created_at, 
+			updated_at, deleted_at, user_id
 		FROM tasks
 		WHERE deleted_at IS NULL
 		  AND ($1::varchar IS NULL OR status = $1)
 		  AND ($2::varchar IS NULL OR type   = $2)
 		  AND ($3::text[]  IS NULL OR tags   @> $3)
-		ORDER BY created_at DESC
+		  AND ($6::uuid IS NULL OR user_id = $6)
+		ORDER BY created_at DESC, id DESC
 		LIMIT $4 OFFSET $5`,
-		p.Status, p.Type, p.Tags, p.Limit, p.Offset,
+		p.Status, p.Type, p.Tags, p.Limit, p.Offset, p.UserID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 	defer rows.Close()
 
-	var tasks []*storage.Task
+	var tasks []*domain.Task
 	for rows.Next() {
 		t, err := scanTask(rows)
 		if err != nil {
@@ -98,10 +108,10 @@ func (s *Storage) ListTasks(ctx context.Context, p storage.ListTasksParams) ([]*
 	return tasks, rows.Err()
 }
 
-func (s *Storage) UpdateTask(ctx context.Context, p storage.UpdateTaskParams) (*storage.Task, error) {
-	const op = "storage.pgsql.UpdateTask"
+func (s *Storage) UpdateTask(ctx context.Context, p domain.UpdateTaskParams) (*domain.Task, error) {
+	const op = "storage.repository.UpdateTask"
 
-	row := s.Pool().QueryRow(ctx, `
+	row := s.pool.QueryRow(ctx, `
 		UPDATE tasks SET
 			name        = COALESCE($2, name),
 			payload     = COALESCE($3, payload),
@@ -120,18 +130,18 @@ func (s *Storage) UpdateTask(ctx context.Context, p storage.UpdateTaskParams) (*
 		p.MaxRetries, p.Tags, p.TargetHost,
 	)
 
-	t, err := scanTask(row)
+	tag, err := scanTask(row)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 
-	return t, nil
+	return tag, nil
 }
 
 func (s *Storage) UpdateTaskStatus(ctx context.Context, id, status string, nextRunAt *time.Time) error {
-	const op = "storage.pgsql.UpdateTaskStatus"
+	const op = "storage.repository.UpdateTaskStatus"
 
-	tag, err := s.Pool().Exec(ctx, `
+	tag, err := s.pool.Exec(ctx, `
 		UPDATE tasks SET
 			status = $2,
 			next_run_at = $3,
@@ -148,16 +158,16 @@ func (s *Storage) UpdateTaskStatus(ctx context.Context, id, status string, nextR
 		return fmt.Errorf("%s: %w", op, err)
 	}
 	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("%s: task not found: %s", op, id)
+		return fmt.Errorf("%s: %w", op, domain.ErrNotFound)
 	}
 
 	return nil
 }
 
 func (s *Storage) DeleteTask(ctx context.Context, id string) error {
-	const op = "storage.pgsql.DeleteTask"
+	const op = "storage.repository.DeleteTask"
 
-	tag, err := s.Pool().Exec(ctx, `
+	tag, err := s.pool.Exec(ctx, `
 		UPDATE tasks SET deleted_at = NOW()
 		WHERE id = $1 AND deleted_at IS NULL`,
 		id,
@@ -166,7 +176,7 @@ func (s *Storage) DeleteTask(ctx context.Context, id string) error {
 		return fmt.Errorf("%s: %w", op, err)
 	}
 	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("%s: task not found: %s", op, id)
+		return fmt.Errorf("%s: %w", op, domain.ErrNotFound)
 	}
 
 	return nil
@@ -174,10 +184,10 @@ func (s *Storage) DeleteTask(ctx context.Context, id string) error {
 
 // Берёт до limit задач готовых к запуску, атомарно переводит в running
 
-func (s *Storage) AcquirePendingTasks(ctx context.Context, workerID string, limit int) ([]*storage.Task, error) {
-	const op = "storage.pgsql.AcquirePendingTasks"
+func (s *Storage) AcquirePendingTasks(ctx context.Context, workerID string, limit int) ([]*domain.Task, error) {
+	const op = "storage.repository.AcquirePendingTasks"
 
-	rows, err := s.Pool().Query(ctx, `
+	rows, err := s.pool.Query(ctx, `
 		WITH next_tasks AS (
 			SELECT id FROM tasks
 			WHERE status     = 'pending'
@@ -206,7 +216,7 @@ func (s *Storage) AcquirePendingTasks(ctx context.Context, workerID string, limi
 	}
 	defer rows.Close()
 
-	var tasks []*storage.Task
+	var tasks []*domain.Task
 	for rows.Next() {
 		t, err := scanTask(rows)
 		if err != nil {
@@ -218,10 +228,10 @@ func (s *Storage) AcquirePendingTasks(ctx context.Context, workerID string, limi
 	return tasks, rows.Err()
 }
 
-func (s *Storage) CreateExecution(ctx context.Context, p storage.CreateExecutionParams) (*storage.TaskExecution, error) {
-	const op = "storage.pgsql.CreateExecution"
+func (s *Storage) CreateExecution(ctx context.Context, p domain.CreateExecutionParams) (*domain.TaskExecution, error) {
+	const op = "storage.repository.CreateExecution"
 
-	row := s.Pool().QueryRow(ctx, `
+	row := s.pool.QueryRow(ctx, `
 		INSERT INTO task_executions (task_id, attempt, worker_id, request)
 		VALUES ($1, $2, $3, $4)
 		RETURNING
@@ -241,10 +251,10 @@ func (s *Storage) CreateExecution(ctx context.Context, p storage.CreateExecution
 	return e, nil
 }
 
-func (s *Storage) FinishExecution(ctx context.Context, p storage.FinishExecutionParams) (*storage.TaskExecution, error) {
-	const op = "storage.pgsql.FinishExecution"
+func (s *Storage) FinishExecution(ctx context.Context, p domain.FinishExecutionParams) (*domain.TaskExecution, error) {
+	const op = "storage.repository.FinishExecution"
 
-	row := s.Pool().QueryRow(ctx, `
+	row := s.pool.QueryRow(ctx, `
 		UPDATE task_executions SET
 			status      = $2,
 			finished_at = NOW(),
@@ -271,14 +281,14 @@ func (s *Storage) FinishExecution(ctx context.Context, p storage.FinishExecution
 	return e, nil
 }
 
-func (s *Storage) ListExecutions(ctx context.Context, taskID string, limit int) ([]*storage.TaskExecution, error) {
-	const op = "storage.pgsql.ListExecutions"
+func (s *Storage) ListExecutions(ctx context.Context, taskID string, limit int) ([]*domain.TaskExecution, error) {
+	const op = "storage.repository.ListExecutions"
 
 	if limit == 0 {
 		limit = 20
 	}
 
-	rows, err := s.Pool().Query(ctx, `
+	rows, err := s.pool.Query(ctx, `
 		SELECT
 			id, task_id, status, attempt,
 			started_at, finished_at, duration,
@@ -296,7 +306,7 @@ func (s *Storage) ListExecutions(ctx context.Context, taskID string, limit int) 
 	}
 	defer rows.Close()
 
-	var execs []*storage.TaskExecution
+	var execs []*domain.TaskExecution
 	for rows.Next() {
 		e, err := scanExecution(rows)
 		if err != nil {
@@ -308,10 +318,10 @@ func (s *Storage) ListExecutions(ctx context.Context, taskID string, limit int) 
 	return execs, rows.Err()
 }
 
-func (s *Storage) AcquireLock(ctx context.Context, taskID, workerID string, ttl time.Duration) (*storage.TaskLock, error) {
-	const op = "storage.pgsql.AcquireLock"
+func (s *Storage) AcquireLock(ctx context.Context, taskID, workerID string, ttl time.Duration) (*domain.TaskLock, error) {
+	const op = "storage.repository.AcquireLock"
 
-	row := s.Pool().QueryRow(ctx, `
+	row := s.pool.QueryRow(ctx, `
 		INSERT INTO task_locks (task_id, worker_id, expires_at)
 		VALUES ($1, $2, NOW() + $3::interval)
 		ON CONFLICT (task_id) DO UPDATE
@@ -323,7 +333,7 @@ func (s *Storage) AcquireLock(ctx context.Context, taskID, workerID string, ttl 
 		taskID, workerID, ttl.String(),
 	)
 
-	var l storage.TaskLock
+	var l domain.TaskLock
 	err := row.Scan(&l.ID, &l.TaskID, &l.WorkerID, &l.AcquiredAt, &l.ExpiresAt)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", op, err)
@@ -333,9 +343,9 @@ func (s *Storage) AcquireLock(ctx context.Context, taskID, workerID string, ttl 
 }
 
 func (s *Storage) ReleaseLock(ctx context.Context, taskID, workerID string) error {
-	const op = "storage.pgsql.ReleaseLock"
+	const op = "storage.repository.ReleaseLock"
 
-	tag, err := s.Pool().Exec(ctx, `
+	tag, err := s.pool.Exec(ctx, `
 		DELETE FROM task_locks
 		WHERE task_id = $1 AND worker_id = $2`,
 		taskID, workerID,
@@ -351,9 +361,9 @@ func (s *Storage) ReleaseLock(ctx context.Context, taskID, workerID string) erro
 }
 
 func (s *Storage) CleanExpiredLocks(ctx context.Context) (int64, error) {
-	const op = "storage.pgsql.CleanExpiredLocks"
+	const op = "storage.repository.CleanExpiredLocks"
 
-	tag, err := s.Pool().Exec(ctx, `DELETE FROM task_locks WHERE expires_at < NOW()`)
+	tag, err := s.pool.Exec(ctx, `DELETE FROM task_locks WHERE expires_at < NOW()`)
 	if err != nil {
 		return 0, fmt.Errorf("%s: %w", op, err)
 	}
@@ -365,26 +375,26 @@ type scanner interface {
 	Scan(dest ...any) error
 }
 
-func scanTask(s scanner) (*storage.Task, error) {
-	var t storage.Task
+func scanTask(s scanner) (*domain.Task, error) {
+	var t domain.Task
 	err := s.Scan(
 		&t.ID, &t.Name, &t.Type, &t.Payload, &t.Schedule, &t.Timezone,
 		&t.Status, &t.NextRunAt, &t.LastRunAt, &t.StartedAt,
 		&t.Retries, &t.MaxRetries, &t.RetryDelay, &t.Timeout,
 		&t.TargetHost, &t.Tags, &t.CreatedBy,
-		&t.CreatedAt, &t.UpdatedAt, &t.DeletedAt,
+		&t.CreatedAt, &t.UpdatedAt, &t.DeletedAt, &t.UserID,
 	)
 	if err != nil {
-		if err == pgx.ErrNoRows {
-			return nil, fmt.Errorf("task not found")
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrNotFound
 		}
 		return nil, err
 	}
 	return &t, nil
 }
 
-func scanExecution(s scanner) (*storage.TaskExecution, error) {
-	var e storage.TaskExecution
+func scanExecution(s scanner) (*domain.TaskExecution, error) {
+	var e domain.TaskExecution
 	err := s.Scan(
 		&e.ID, &e.TaskID, &e.Status, &e.Attempt,
 		&e.StartedAt, &e.FinishedAt, &e.Duration,
@@ -393,8 +403,8 @@ func scanExecution(s scanner) (*storage.TaskExecution, error) {
 		&e.WorkerID, &e.CreatedAt,
 	)
 	if err != nil {
-		if err == pgx.ErrNoRows {
-			return nil, fmt.Errorf("execution not found")
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrNotFound
 		}
 		return nil, err
 	}

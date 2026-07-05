@@ -9,14 +9,15 @@ import (
 )
 
 type Config struct {
-	Env string `yaml:"env" env-default:"local"`
+	Env        string `yaml:"env" env-default:"local"`
 	HttpServer `yaml:"http_server"`
-	PsqlInfo `yaml:"psql_info"`
+	PsqlInfo   `yaml:"psql_info"`
+	JWTSecret  string `yaml:"jwt_secret" env-required:"true"`
 }
 
 type HttpServer struct {
-	Adress string `yaml:"addres" env-default:"localhost:8080"`
-	Timeout time.Duration `yaml:"timeout" env-default:"4s"`
+	Adress      string        `yaml:"addres" env-default:"localhost:8080"`
+	Timeout     time.Duration `yaml:"timeout" env-default:"4s"`
 	IdleTimeout time.Duration `yaml:"idle_timeout" env-default:"60s"`
 }
 
@@ -28,7 +29,7 @@ type PsqlInfo struct {
 	Dbname   string `yaml:"dbname" env-required:"true" env-default:"app"`
 }
 
- func MustLode() *Config {
+func MustLode() *Config {
 	configPath := os.Getenv("CONFIG_PATH")
 	if configPath == "" {
 		log.Fatal("CONFIG_PATH is not set")
@@ -38,7 +39,7 @@ type PsqlInfo struct {
 		log.Fatalf("configPath is not exist: %s", configPath)
 	}
 
- 	var cnf Config
+	var cnf Config
 
 	if err := cleanenv.ReadConfig(configPath, &cnf); err != nil {
 		log.Fatalf("cannot reade config: %s", err)

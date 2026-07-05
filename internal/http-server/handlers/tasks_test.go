@@ -1,13 +1,13 @@
 package handlers_test
 
 import (
+	"OctoQueue/internal/domain"
 	"OctoQueue/internal/http-server/handlers"
-	"OctoQueue/internal/storage"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 
-	"OctoQueue/internal/storage/mocks"
+	"OctoQueue/internal/storage/repository/mocks"
 	"log/slog"
 	"testing"
 
@@ -39,7 +39,7 @@ func TestCreateTask(t *testing.T) {
 					mock.Anything,
 				).
 				Return(
-					&storage.Task{
+					&domain.Task{
 						ID: mock.Anything,
 					},
 					nil,

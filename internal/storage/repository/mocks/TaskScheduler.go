@@ -3,7 +3,7 @@
 package mocks
 
 import (
-	storage "OctoQueue/internal/storage"
+	domain "OctoQueue/internal/domain"
 	context "context"
 
 	mock "github.com/stretchr/testify/mock"
@@ -15,23 +15,23 @@ type TaskScheduler struct {
 }
 
 // AcquirePendingTasks provides a mock function with given fields: ctx, workerID, limit
-func (_m *TaskScheduler) AcquirePendingTasks(ctx context.Context, workerID string, limit int) ([]*storage.Task, error) {
+func (_m *TaskScheduler) AcquirePendingTasks(ctx context.Context, workerID string, limit int) ([]*domain.Task, error) {
 	ret := _m.Called(ctx, workerID, limit)
 
 	if len(ret) == 0 {
 		panic("no return value specified for AcquirePendingTasks")
 	}
 
-	var r0 []*storage.Task
+	var r0 []*domain.Task
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, int) ([]*storage.Task, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, int) ([]*domain.Task, error)); ok {
 		return rf(ctx, workerID, limit)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, int) []*storage.Task); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, int) []*domain.Task); ok {
 		r0 = rf(ctx, workerID, limit)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]*storage.Task)
+			r0 = ret.Get(0).([]*domain.Task)
 		}
 	}
 

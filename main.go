@@ -13,11 +13,13 @@ import (
 
 	"OctoQueue/internal/config"
 	"OctoQueue/internal/http-server/handlers"
+	"OctoQueue/internal/http-server/middleware/auth"
 	"OctoQueue/internal/http-server/middleware/logger"
 	"OctoQueue/internal/lib/logger/handlers/slogpretty"
 	"OctoQueue/internal/lib/logger/sl"
+	"OctoQueue/internal/service"
 	"OctoQueue/internal/storage/migrator"
-	"OctoQueue/internal/storage/pgsql"
+	"OctoQueue/internal/storage/repository"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -57,30 +59,39 @@ func main() {
 	log.Info("Migrations applied successfully")
 
 	ctx := context.Background()
-	storage, err := pgsql.NewStorage(ctx, dsn, log)
+	storage, err := repository.NewStorage(ctx, dsn, log)
 	if err != nil {
 		log.Error("failed to create storage", sl.Err(err))
 		os.Exit(1)
 	}
 	defer storage.Close()
 
+	userRepo := repository.NewUserRepository(storage.Pool())
+	authSvc := service.NewAuthService(userRepo, cfg.JWTSecret, log)
+
 	log.Info("Application started")
 
 	router := chi.NewRouter()
 
+	authMW := auth.Auth(log, cfg.JWTSecret)
+	
 	router.Use(middleware.RequestID)
 	router.Use(middleware.RealIP)
 	router.Use(logger.New(log))
 	router.Use(middleware.Recoverer)
 	router.Use(middleware.URLFormat)
+	
+	authH := handlers.NewAuthHandler(authSvc, log)
+	router.Post("/register", authH.Register)
+	router.Post("/login", authH.Login)
 
 	router.Get("/status", handlers.Status(log))
-	router.Post("/tasks", handlers.CreateTask(log, storage))
-	router.Get("/tasks", handlers.ListTasks(log, storage))
-	router.Get("/tasks/{id}", handlers.GetTask(log, storage))
-	router.Patch("/tasks/{id}", handlers.UpdateTask(log, storage))
-	router.Delete("/tasks/{id}", handlers.DeleteTask(log, storage))
-	router.Get("/tasks/{id}/executions", handlers.GetTaskExecutions(log, storage))
+	router.With(authMW).Post("/tasks", handlers.CreateTask(log, storage))
+	router.With(authMW).Get("/tasks", handlers.ListTasks(log, storage))
+	router.With(authMW).Get("/tasks/{id}", handlers.GetTask(log, storage))
+	router.With(authMW).Patch("/tasks/{id}", handlers.UpdateTask(log, storage))
+	router.With(authMW).Delete("/tasks/{id}", handlers.DeleteTask(log, storage))
+	router.With(authMW).Get("/tasks/{id}/executions", handlers.GetTaskExecutions(log, storage))
 
 	srv := &http.Server{
 		Addr:         cfg.Adress,

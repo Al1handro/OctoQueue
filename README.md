@@ -27,4 +27,3 @@ Cron отлично подходит для простых сценариев, �
 Для максимальной эффективности рекомендуется запускать OctoQueue на VPS или выделенном сервере.
 
 [![Go Version](https://img.shields.io/badge/Go-1.22+-00ADD8?style=flat\&logo=go)](https://go.dev/)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)

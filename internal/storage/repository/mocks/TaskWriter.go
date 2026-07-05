@@ -3,7 +3,7 @@
 package mocks
 
 import (
-	storage "OctoQueue/internal/storage"
+	domain "OctoQueue/internal/domain"
 	context "context"
 
 	mock "github.com/stretchr/testify/mock"
@@ -35,27 +35,27 @@ func (_m *TaskWriter) DeleteTask(ctx context.Context, id string) error {
 }
 
 // UpdateTask provides a mock function with given fields: ctx, p
-func (_m *TaskWriter) UpdateTask(ctx context.Context, p storage.UpdateTaskParams) (*storage.Task, error) {
+func (_m *TaskWriter) UpdateTask(ctx context.Context, p domain.UpdateTaskParams) (*domain.Task, error) {
 	ret := _m.Called(ctx, p)
 
 	if len(ret) == 0 {
 		panic("no return value specified for UpdateTask")
 	}
 
-	var r0 *storage.Task
+	var r0 *domain.Task
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, storage.UpdateTaskParams) (*storage.Task, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, domain.UpdateTaskParams) (*domain.Task, error)); ok {
 		return rf(ctx, p)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, storage.UpdateTaskParams) *storage.Task); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, domain.UpdateTaskParams) *domain.Task); ok {
 		r0 = rf(ctx, p)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*storage.Task)
+			r0 = ret.Get(0).(*domain.Task)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, storage.UpdateTaskParams) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, domain.UpdateTaskParams) error); ok {
 		r1 = rf(ctx, p)
 	} else {
 		r1 = ret.Error(1)

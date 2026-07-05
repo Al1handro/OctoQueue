@@ -3,7 +3,7 @@
 package mocks
 
 import (
-	storage "OctoQueue/internal/storage"
+	domain "OctoQueue/internal/domain"
 	context "context"
 
 	mock "github.com/stretchr/testify/mock"
@@ -17,23 +17,23 @@ type LockManager struct {
 }
 
 // AcquireLock provides a mock function with given fields: ctx, taskID, workerID, ttl
-func (_m *LockManager) AcquireLock(ctx context.Context, taskID string, workerID string, ttl time.Duration) (*storage.TaskLock, error) {
+func (_m *LockManager) AcquireLock(ctx context.Context, taskID string, workerID string, ttl time.Duration) (*domain.TaskLock, error) {
 	ret := _m.Called(ctx, taskID, workerID, ttl)
 
 	if len(ret) == 0 {
 		panic("no return value specified for AcquireLock")
 	}
 
-	var r0 *storage.TaskLock
+	var r0 *domain.TaskLock
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string, string, time.Duration) (*storage.TaskLock, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, time.Duration) (*domain.TaskLock, error)); ok {
 		return rf(ctx, taskID, workerID, ttl)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string, string, time.Duration) *storage.TaskLock); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, string, string, time.Duration) *domain.TaskLock); ok {
 		r0 = rf(ctx, taskID, workerID, ttl)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*storage.TaskLock)
+			r0 = ret.Get(0).(*domain.TaskLock)
 		}
 	}
 
