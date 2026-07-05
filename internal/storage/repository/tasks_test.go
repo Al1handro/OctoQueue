@@ -45,7 +45,7 @@ func TestStorage_CreateTask(t *testing.T) {
 	}
 	user := testUserRepository(t, s)
 
-	var CreatedIDs []string
+	created := make([]*domain.Task, 0)
 
 	schedule := "0 0 * * *"
 	createdBy := "test-user"
@@ -157,15 +157,20 @@ func TestStorage_CreateTask(t *testing.T) {
 				tt.want(t, got)
 			}
 
-			CreatedIDs = append(CreatedIDs, got.ID)
+			created = append(created, got)
 		})
 	}
 
-	for _, id := range CreatedIDs {
-		_, _ = s.Pool().Exec(context.Background(), "DELETE FROM tasks WHERE id = $1", id)
-	}
-
-	_, _ = s.Pool().Exec(context.Background(), "DELETE FROM users WHERE id = $1", user.ID)
+	t.Cleanup(func() {
+		for _, task := range created {
+			_, _ = s.Pool().Exec(
+				context.Background(),
+				"DELETE FROM tasks WHERE id = $1",
+				task.ID,
+			)
+		}
+		_, _ = s.Pool().Exec(context.Background(), "DELETE FROM users WHERE id = $1", user.ID)
+	})
 }
 
 func TestStorage_GetTaskByID(t *testing.T) {
@@ -597,7 +602,7 @@ func TestStorage_UpdateTaskStatus(t *testing.T) {
 		name string
 		dsn  string
 
-		setup func(t *testing.T, s *repository.Storage) (id string)
+		setup func(t *testing.T, s *repository.Storage) (task *domain.Task)
 
 		status    string
 		nextRunAt *time.Time
@@ -610,7 +615,7 @@ func TestStorage_UpdateTaskStatus(t *testing.T) {
 			name: "set running status does not touch last_run_at",
 			dsn:  testDSN,
 
-			setup: func(t *testing.T, s *repository.Storage) string {
+			setup: func(t *testing.T, s *repository.Storage) *domain.Task {
 				schedule := "0 0 * * *"
 				createdBy := "test"
 
@@ -628,7 +633,7 @@ func TestStorage_UpdateTaskStatus(t *testing.T) {
 					t.Fatalf("create: %v", err)
 				}
 				created = append(created, task)
-				return task.ID
+				return task
 			},
 
 			status:    "running",
@@ -648,7 +653,7 @@ func TestStorage_UpdateTaskStatus(t *testing.T) {
 			name: "completed sets last_run_at",
 			dsn:  testDSN,
 
-			setup: func(t *testing.T, s *repository.Storage) string {
+			setup: func(t *testing.T, s *repository.Storage) *domain.Task {
 				task, err := s.CreateTask(t.Context(), domain.CreateTaskParams{
 					Name:     "t2",
 					Type:     "http_call",
@@ -661,7 +666,7 @@ func TestStorage_UpdateTaskStatus(t *testing.T) {
 					t.Fatalf("create: %v", err)
 				}
 				created = append(created, task)
-				return task.ID
+				return task
 			},
 
 			status:    "completed",
@@ -686,7 +691,7 @@ func TestStorage_UpdateTaskStatus(t *testing.T) {
 			name: "failed sets last_run_at",
 			dsn:  testDSN,
 
-			setup: func(t *testing.T, s *repository.Storage) string {
+			setup: func(t *testing.T, s *repository.Storage) *domain.Task {
 				task, err := s.CreateTask(t.Context(), domain.CreateTaskParams{
 					Name:     "t3",
 					Type:     "http_call",
@@ -699,7 +704,7 @@ func TestStorage_UpdateTaskStatus(t *testing.T) {
 					t.Fatalf("create: %v", err)
 				}
 				created = append(created, task)
-				return task.ID
+				return task
 			},
 
 			status:    "failed",
@@ -725,15 +730,16 @@ func TestStorage_UpdateTaskStatus(t *testing.T) {
 				t.Fatalf("new storage: %v", err)
 			}
 
-			id := tt.setup(t, s)
+			var task *domain.Task
+			task = tt.setup(t, s)
 
 			// fetch before state
-			before, err := s.GetTaskByID(t.Context(), id)
+			before, err := s.GetTaskByID(t.Context(), task.ID)
 			if err != nil {
 				t.Fatalf("get before: %v", err)
 			}
 
-			err = s.UpdateTaskStatus(t.Context(), id, tt.status, tt.nextRunAt)
+			err = s.UpdateTaskStatus(t.Context(), task.ID, tt.status, tt.nextRunAt)
 
 			if tt.wantErr {
 				if err == nil {
@@ -746,7 +752,7 @@ func TestStorage_UpdateTaskStatus(t *testing.T) {
 				t.Fatalf("UpdateTaskStatus error: %v", err)
 			}
 
-			after, err := s.GetTaskByID(t.Context(), id)
+			after, err := s.GetTaskByID(t.Context(), task.ID)
 			if err != nil {
 				t.Fatalf("get after: %v", err)
 			}
@@ -768,7 +774,7 @@ func TestStorage_UpdateTaskStatus(t *testing.T) {
 	})
 
 	_, _ = s.Pool().Exec(context.Background(), "DELETE FROM users WHERE id = $1", user.ID)
-} //TODO: DELETE from tasks where id = ...
+}
 
 func ptrTime(t time.Time) *time.Time {
 	return &t
@@ -783,18 +789,20 @@ func TestStorage_DeleteTask(t *testing.T) {
 	}
 	user := testUserRepository(t, s)
 
+	var created []*domain.Task
+
 	tests := []struct {
 		name    string
 		dsn     string
 		log     *slog.Logger
-		setup   func(*testing.T, *repository.Storage) string
+		setup   func(*testing.T, *repository.Storage) *domain.Task
 		wantErr bool
 	}{
 		{
 			name: "delete existing task",
 			dsn:  testDSN,
 			log:  log,
-			setup: func(t *testing.T, s *repository.Storage) string {
+			setup: func(t *testing.T, s *repository.Storage) *domain.Task {
 				task, err := s.CreateTask(t.Context(), domain.CreateTaskParams{
 					Name:     "to be deleted",
 					Type:     "http_call",
@@ -806,7 +814,8 @@ func TestStorage_DeleteTask(t *testing.T) {
 				if err != nil {
 					t.Fatalf("create task: %v", err)
 				}
-				return task.ID
+				created = append(created, task)
+				return task
 			},
 			wantErr: false,
 		},
@@ -814,8 +823,8 @@ func TestStorage_DeleteTask(t *testing.T) {
 			name: "delete not existing task",
 			dsn:  testDSN,
 			log:  log,
-			setup: func(t *testing.T, s *repository.Storage) string {
-				return "00000000-0000-0000-0000-000000000000"
+			setup: func(t *testing.T, s *repository.Storage) *domain.Task {
+				return &domain.Task{ID: "00000000-0000-0000-0000-000000000000"}
 			},
 			wantErr: true,
 		},
@@ -827,9 +836,9 @@ func TestStorage_DeleteTask(t *testing.T) {
 				t.Fatalf("could not construct receiver type: %v", err)
 			}
 
-			id := tt.setup(t, s)
+			task := tt.setup(t, s)
 
-			gotErr := s.DeleteTask(t.Context(), id)
+			gotErr := s.DeleteTask(t.Context(), task.ID)
 			if gotErr != nil {
 				if !tt.wantErr {
 					t.Errorf("DeleteTask() failed: %v", gotErr)
@@ -837,7 +846,7 @@ func TestStorage_DeleteTask(t *testing.T) {
 				return
 			}
 
-			_, err = s.GetTaskByID(t.Context(), id)
+			_, err = s.GetTaskByID(t.Context(), task.ID)
 			require.Error(t, err)
 
 			if tt.wantErr {
@@ -845,13 +854,15 @@ func TestStorage_DeleteTask(t *testing.T) {
 			}
 		})
 	}
+
+	t.Cleanup(func() {
+		for _, task := range created {
+			_, _ = s.Pool().Exec(
+				context.Background(),
+				"DELETE FROM tasks WHERE id = $1",
+				task.ID,
+			)
+		}
+		_, _ = s.Pool().Exec(context.Background(), "DELETE FROM users WHERE id = $1", user.ID)
+	})
 }
-
-// 			if tt.wantErr {
-// 				t.Fatal("DeleteTask() succeeded unexpectedly")
-// 			}
-// 		})
-// 	}
-// }
-
-// TODO: add NewTestStorage t.Helper()
