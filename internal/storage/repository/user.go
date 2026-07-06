@@ -12,8 +12,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-var ErrDuplicateEmail = errors.New("email already taken")
-
 type pgUserRepo struct {
 	pool *pgxpool.Pool
 }
@@ -44,7 +42,7 @@ func (s *pgUserRepo) CreateUser(ctx context.Context, user *domain.User) error {
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			return ErrDuplicateEmail
+			return domain.ErrDuplicateEmail
 		}
 		return fmt.Errorf("%s: creating user: %w", op, err)
 	}
@@ -55,16 +53,15 @@ func (s *pgUserRepo) CreateUser(ctx context.Context, user *domain.User) error {
 
 func (s *pgUserRepo) GetUser(ctx context.Context, id string) (*domain.User, error) {
 	const op = "storage.repository.GetUser"
-
 	var u domain.User
 	err := s.pool.QueryRow(ctx, `
-	SELECT id, email, password, role, created_at
-		FROM users
-		WHERE id = $1
-	`, id).Scan(&u.ID, &u.Email, &u.Password, &u.Role, &u.CreatedAt)
+		SELECT id, email, password_hash, role, created_at
+			FROM users
+			WHERE id = $1
+		`, id).Scan(&u.ID, &u.Email, &u.Password, &u.Role, &u.CreatedAt)
 	if err != nil {
-		if err == pgx.ErrNoRows {
-			return nil, fmt.Errorf("%s: user not found: %w", op, domain.ErrNotFound)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("%s: %w", op, domain.ErrUserNotFound)
 		}
 		return nil, fmt.Errorf("%s: select: %w", op, err)
 	}
@@ -81,8 +78,8 @@ func (s *pgUserRepo) GetByEmail(ctx context.Context, email string) (*domain.User
 		WHERE email = $1
 	`, email).Scan(&u.ID, &u.Email, &u.Password, &u.Role, &u.CreatedAt)
 	if err != nil {
-		if err == pgx.ErrNoRows {
-			return nil, fmt.Errorf("%s: user not found: %w", op, domain.ErrNotFound)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("%s: %w", op, domain.ErrUserNotFound)
 		}
 		return nil, fmt.Errorf("%s: select: %w", op, err)
 	}
