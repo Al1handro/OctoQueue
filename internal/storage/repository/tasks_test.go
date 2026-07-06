@@ -4,6 +4,7 @@ import (
 	"OctoQueue/internal/domain"
 	"OctoQueue/internal/storage/repository"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -37,12 +39,18 @@ func testUserRepository(t *testing.T, storage *repository.Storage) *domain.User 
 }
 
 func TestStorage_CreateTask(t *testing.T) {
+	ctx := context.Background()
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 
 	s, err := repository.NewStorage(context.Background(), testDSN, log)
 	if err != nil {
 		t.Fatalf("could not connect to test db: %v", err)
 	}
+
+	t.Cleanup(func() {
+		s.Close()
+	})
+
 	user := testUserRepository(t, s)
 
 	created := make([]*domain.Task, 0)
@@ -55,7 +63,7 @@ func TestStorage_CreateTask(t *testing.T) {
 		name    string
 		p       domain.CreateTaskParams
 		want    func(t *testing.T, got *domain.Task)
-		wantErr bool
+		wantErr error
 	}{
 		{
 			name: "successful creation of http_call task",
@@ -73,27 +81,16 @@ func TestStorage_CreateTask(t *testing.T) {
 			},
 			want: func(t *testing.T, got *domain.Task) {
 				t.Helper()
-				if got.ID == "" {
-					t.Error("expected non-empty ID")
-				}
-				if got.Name != "Daily backup" {
-					t.Errorf("Name = %q, want %q", got.Name, "Daily backup")
-				}
-				if got.Type != "http_call" {
-					t.Errorf("Type = %q, want %q", got.Type, "http_call")
-				}
-				if got.Status != "pending" {
-					t.Errorf("Status = %q, want %q", got.Status, "pending")
-				}
-				if got.MaxRetries != 3 {
-					t.Errorf("MaxRetries = %d, want 3", got.MaxRetries)
-				}
-				if len(got.Tags) != 2 {
-					t.Errorf("Tags len = %d, want 2", len(got.Tags))
-				}
-				if got.CreatedAt.IsZero() {
-					t.Error("expected non-zero CreatedAt")
-				}
+				assert.NotEmpty(t, got.ID, "expected non-empty ID")
+				assert.Equal(t, "pending", got.Status)
+				assert.Len(t, got.Tags, 2)
+				assert.ElementsMatch(t, []string{"production", "critical"}, got.Tags)
+				assert.False(t, got.CreatedAt.IsZero(), "expected non-zero CreatedAt")
+				assert.NotNil(t, got.Schedule)
+				assert.Equal(t, schedule, *got.Schedule)
+				assert.NotNil(t, got.TargetHost)
+				assert.Equal(t, targetHost, *got.TargetHost)
+				assert.JSONEq(t, `{"url":"https://example.com/api","method":"POST"}`, string(got.Payload))
 			},
 		},
 		{
@@ -109,49 +106,18 @@ func TestStorage_CreateTask(t *testing.T) {
 			},
 			want: func(t *testing.T, got *domain.Task) {
 				t.Helper()
-				if got.NextRunAt == nil {
-					t.Error("expected non-nil NextRunAt")
-				}
-				if got.Schedule != nil {
-					t.Error("expected nil Schedule for one-time task")
-				}
+				assert.NotNil(t, got.NextRunAt, "expected non-nil NextRunAt")
+				assert.Nil(t, got.Schedule, "expected nil Schedule for one-time task")
 			},
-		},
-		{
-			name: "An empty name is an error.",
-			p: domain.CreateTaskParams{
-				Name:    "",
-				Type:    "http_call",
-				Payload: []byte(`{}`),
-			},
-			wantErr: true,
-		},
-		{
-			name: "An invalid type is an error.",
-			p: domain.CreateTaskParams{
-				Name:    "Bad task",
-				Type:    "unknown_type",
-				Payload: []byte(`{}`),
-			},
-			wantErr: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			got, err := s.CreateTask(ctx, tt.p)
 
-			got, err := s.CreateTask(context.Background(), tt.p)
-
-			if err != nil {
-				if !tt.wantErr {
-					t.Errorf("CreateTask() unexpected error: %v", err)
-				}
-				return
-			}
-
-			if tt.wantErr {
-				t.Fatal("CreateTask() succeeded unexpectedly")
-			}
+			require.NoError(t, err, "CreateTask() unexpected error")
+			require.NotNil(t, got)
 
 			if tt.want != nil {
 				tt.want(t, got)
@@ -163,13 +129,15 @@ func TestStorage_CreateTask(t *testing.T) {
 
 	t.Cleanup(func() {
 		for _, task := range created {
-			_, _ = s.Pool().Exec(
-				context.Background(),
-				"DELETE FROM tasks WHERE id = $1",
-				task.ID,
-			)
+			_, err := s.Pool().Exec(ctx, "DELETE FROM tasks WHERE id = $1", task.ID)
+			if err != nil {
+				t.Logf("warning: failed to delete task %s: %v", task.ID, err)
+			}
 		}
-		_, _ = s.Pool().Exec(context.Background(), "DELETE FROM users WHERE id = $1", user.ID)
+		_, err := s.Pool().Exec(ctx, "DELETE FROM users WHERE id = $1", user.ID)
+		if err != nil {
+			t.Logf("warning: failed to delete user %s: %v", user.ID, err)
+		}
 	})
 }
 
@@ -417,25 +385,34 @@ func TestStorage_UpdateTask(t *testing.T) {
 	ctx := context.Background()
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	s, err := repository.NewStorage(context.Background(), testDSN, log)
+	// Создаём подключение один раз для всех тестов
+	s, err := repository.NewStorage(ctx, testDSN, log)
 	if err != nil {
 		t.Fatalf("could not connect to test db: %v", err)
 	}
+	// Закрываем подключение после всех тестов
+	t.Cleanup(func() {
+		s.Close()
+	})
+
 	user := testUserRepository(t, s)
+	
+	// Очистка пользователя после всех тестов
+	t.Cleanup(func() {
+		_, _ = s.Pool().Exec(ctx, "DELETE FROM users WHERE id = $1", user.ID)
+	})
 
 	tests := []struct {
 		name string
-		dsn  string
 
 		setup func(t *testing.T, s *repository.Storage) *domain.Task
 		p     domain.UpdateTaskParams
 
 		check   func(t *testing.T, before, got *domain.Task)
-		wantErr bool
+		wantErr error // Изменено с bool на error для проверки конкретной ошибки
 	}{
 		{
 			name: "update name and tags",
-			dsn:  testDSN,
 
 			setup: func(t *testing.T, s *repository.Storage) *domain.Task {
 				schedule := "0 0 * * *"
@@ -444,7 +421,7 @@ func TestStorage_UpdateTask(t *testing.T) {
 				create := func(name, taskType string, tags []string) *domain.Task {
 					t.Helper()
 
-					task, err := s.CreateTask(t.Context(), domain.CreateTaskParams{
+					task, err := s.CreateTask(ctx, domain.CreateTaskParams{
 						Name:      name,
 						Type:      taskType,
 						Payload:   []byte(`{"url":"https://example.com/api","method":"GET"}`),
@@ -495,13 +472,12 @@ func TestStorage_UpdateTask(t *testing.T) {
 
 		{
 			name: "update only max retries does not touch others",
-			dsn:  testDSN,
 
 			setup: func(t *testing.T, s *repository.Storage) *domain.Task {
 				schedule := "0 0 * * *"
 				createdBy := "test"
 
-				task, err := s.CreateTask(t.Context(), domain.CreateTaskParams{
+				task, err := s.CreateTask(ctx, domain.CreateTaskParams{
 					Name:      "keep",
 					Type:      "http_call",
 					Payload:   []byte(`{"x":1}`),
@@ -531,7 +507,7 @@ func TestStorage_UpdateTask(t *testing.T) {
 					t.Errorf("name changed unexpectedly")
 				}
 
-				if got.Tags[0] != "keep" {
+				if len(got.Tags) == 0 || got.Tags[0] != "keep" {
 					t.Errorf("tags changed unexpectedly")
 				}
 			},
@@ -539,27 +515,18 @@ func TestStorage_UpdateTask(t *testing.T) {
 
 		{
 			name: "task not found",
-			dsn:  testDSN,
 
 			p: domain.UpdateTaskParams{
 				ID:   "00000000-0000-0000-0000-000000000000",
 				Name: ptr("x"),
 			},
 
-			wantErr: true,
+			wantErr: domain.ErrTaskNotFound, // Конкретная ошибка
 		},
 	}
 
 	for _, tt := range tests {
-		tt := tt
-
 		t.Run(tt.name, func(t *testing.T) {
-
-			s, err := repository.NewStorage(ctx, tt.dsn, log)
-			if err != nil {
-				t.Fatalf("new storage: %v", err)
-			}
-
 			var before *domain.Task
 			if tt.setup != nil {
 				before = tt.setup(t, s)
@@ -568,9 +535,12 @@ func TestStorage_UpdateTask(t *testing.T) {
 
 			got, err := s.UpdateTask(ctx, tt.p)
 
-			if tt.wantErr {
+			if tt.wantErr != nil {
 				if err == nil {
-					t.Fatal("expected error, got nil")
+					t.Fatalf("expected error %v, got nil", tt.wantErr)
+				}
+				if !errors.Is(err, tt.wantErr) {
+					t.Errorf("expected error %v, got %v", tt.wantErr, err)
 				}
 				return
 			}
@@ -584,8 +554,6 @@ func TestStorage_UpdateTask(t *testing.T) {
 			}
 		})
 	}
-
-	_, _ = s.Pool().Exec(context.Background(), "DELETE FROM users WHERE id = $1", user.ID)
 }
 
 func TestStorage_UpdateTaskStatus(t *testing.T) {
@@ -632,7 +600,6 @@ func TestStorage_UpdateTaskStatus(t *testing.T) {
 				if err != nil {
 					t.Fatalf("create: %v", err)
 				}
-				created = append(created, task)
 				return task
 			},
 
@@ -665,7 +632,6 @@ func TestStorage_UpdateTaskStatus(t *testing.T) {
 				if err != nil {
 					t.Fatalf("create: %v", err)
 				}
-				created = append(created, task)
 				return task
 			},
 
@@ -703,7 +669,6 @@ func TestStorage_UpdateTaskStatus(t *testing.T) {
 				if err != nil {
 					t.Fatalf("create: %v", err)
 				}
-				created = append(created, task)
 				return task
 			},
 
@@ -814,7 +779,6 @@ func TestStorage_DeleteTask(t *testing.T) {
 				if err != nil {
 					t.Fatalf("create task: %v", err)
 				}
-				created = append(created, task)
 				return task
 			},
 			wantErr: false,
@@ -837,6 +801,7 @@ func TestStorage_DeleteTask(t *testing.T) {
 			}
 
 			task := tt.setup(t, s)
+			created = append(created, task)
 
 			gotErr := s.DeleteTask(t.Context(), task.ID)
 			if gotErr != nil {

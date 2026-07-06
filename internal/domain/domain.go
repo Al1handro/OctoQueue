@@ -23,10 +23,22 @@ const (
 
 var (
 	ErrNotFound        = errors.New("not found")
+	ErrTaskNotFound    = errors.New("task not found")
+	ErrInvalidTaskName = errors.New("invalid task name")
+	ErrInvalidTaskType = errors.New("invalid task type")
 	ErrForbidden       = errors.New("forbidden")
 	ErrInvalidRequest  = errors.New("invalid request")
 	ErrUnauthorized    = errors.New("unauthorized")
+	ErrDuplicateTask = errors.New("duplicate task")
 )
+
+var ValidTaskTypes = map[string]bool{
+	"http_call": true,
+	"shell":     true,
+	"email":     true,
+	"grpc":      true,
+	"kafka":     true,
+}
 
 type User struct {
 	ID        uuid.UUID    `json:"id"`
