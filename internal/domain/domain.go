@@ -2,6 +2,7 @@ package domain
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -23,13 +24,35 @@ const (
 
 var (
 	ErrNotFound        = errors.New("not found")
+	ErrUserNotFound    = fmt.Errorf("user: %w", ErrNotFound)
+	ErrTaskNotFound    = fmt.Errorf("task: %w", ErrNotFound)
+
+	ErrInvalidTaskName = errors.New("invalid task name")
+	ErrInvalidTaskType = errors.New("invalid task type")
+
 	ErrForbidden       = errors.New("forbidden")
 	ErrInvalidRequest  = errors.New("invalid request")
 	ErrUnauthorized    = errors.New("unauthorized")
+
+	ErrDuplicateEmail = errors.New("email already taken")
+	ErrDuplicateTask   = errors.New("duplicate task")
+
+	ErrTaskStatusPending  = errors.New("task status: pending")
+	TaskStatusRunning  = errors.New("task status: running")
+	TaskStatusSuccess  = errors.New("task status: success")
+	TaskStatusFailed   = errors.New("task status: failed")
 )
 
+var ValidTaskTypes = map[string]bool{
+	"http_call": true,
+	"shell":     true,
+	"email":     true,
+	"grpc":      true,
+	"kafka":     true,
+}
+
 type User struct {
-	ID        uuid.UUID    `json:"id"`
+	ID        uuid.UUID `json:"id"`
 	Email     string    `json:"email"`
 	Password  string    `json:"-"`
 	Role      Role      `json:"role"`

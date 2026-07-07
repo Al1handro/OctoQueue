@@ -33,7 +33,7 @@ func (s *Storage) CreateTask(ctx context.Context, p domain.CreateTaskParams) (*d
 		p.NextRunAt, p.MaxRetries, p.Tags, p.CreatedBy, p.TargetHost, p.UserID,
 	)
 
-	t, err := scanTask(row)
+	t, err := scanTask(row, op)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
@@ -49,13 +49,13 @@ func (s *Storage) GetTaskByID(ctx context.Context, id string) (*domain.Task, err
 			id, name, type, payload, schedule, timezone,
 			status, next_run_at, last_run_at, started_at,
 			retries, max_retries, retry_delay, timeout,
-			target_host, tags, created_by, created_at, updated_at, deleted_at
+			target_host, tags, created_by, created_at, updated_at, deleted_at, user_id
 		FROM tasks
 		WHERE id = $1 AND deleted_at IS NULL`,
 		id,
 	)
 
-	t, err := scanTask(row)
+	t, err := scanTask(row, op)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
@@ -98,7 +98,7 @@ func (s *Storage) ListTasks(ctx context.Context, p domain.ListTasksParams) ([]*d
 
 	var tasks []*domain.Task
 	for rows.Next() {
-		t, err := scanTask(rows)
+		t, err := scanTask(rows, op)
 		if err != nil {
 			return nil, fmt.Errorf("%s: scan: %w", op, err)
 		}
@@ -125,12 +125,12 @@ func (s *Storage) UpdateTask(ctx context.Context, p domain.UpdateTaskParams) (*d
 			id, name, type, payload, schedule, timezone,
 			status, next_run_at, last_run_at, started_at,
 			retries, max_retries, retry_delay, timeout,
-			target_host, tags, created_by, created_at, updated_at, deleted_at`,
+			target_host, tags, created_by, created_at, updated_at, deleted_at, user_id`,
 		p.ID, p.Name, p.Payload, p.Schedule, p.Timezone,
 		p.MaxRetries, p.Tags, p.TargetHost,
 	)
 
-	tag, err := scanTask(row)
+	tag, err := scanTask(row, op)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
@@ -218,7 +218,7 @@ func (s *Storage) AcquirePendingTasks(ctx context.Context, workerID string, limi
 
 	var tasks []*domain.Task
 	for rows.Next() {
-		t, err := scanTask(rows)
+		t, err := scanTask(rows, op)
 		if err != nil {
 			return nil, fmt.Errorf("%s: scan: %w", op, err)
 		}
@@ -375,7 +375,7 @@ type scanner interface {
 	Scan(dest ...any) error
 }
 
-func scanTask(s scanner) (*domain.Task, error) {
+func scanTask(s scanner, op string) (*domain.Task, error) {
 	var t domain.Task
 	err := s.Scan(
 		&t.ID, &t.Name, &t.Type, &t.Payload, &t.Schedule, &t.Timezone,
@@ -386,7 +386,7 @@ func scanTask(s scanner) (*domain.Task, error) {
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, domain.ErrNotFound
+			return nil, fmt.Errorf("%s undefinde error with db: %w", op, domain.ErrTaskNotFound)
 		}
 		return nil, err
 	}

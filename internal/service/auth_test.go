@@ -3,7 +3,6 @@ package service_test
 import (
 	"OctoQueue/internal/domain"
 	"OctoQueue/internal/service"
-	"OctoQueue/internal/storage/repository"
 	"OctoQueue/internal/storage/repository/mocks"
 	"context"
 	"errors"
@@ -47,7 +46,7 @@ func TestAuth_Register(t *testing.T) {
 			email:     "taken@example.com",
 			password:  "secret123",
 			role:      domain.RoleUser,
-			repoErr:   repository.ErrDuplicateEmail,
+			repoErr:   domain.ErrDuplicateEmail,
 			wantErr:   service.ErrEmailTaken,
 			wantUser:  false,
 			checkHash: false,
@@ -85,7 +84,7 @@ func TestAuth_Register(t *testing.T) {
 				t.Fatalf("expected error, got nil")
 			}
 
-			if tt.repoErr != nil && !errors.Is(tt.repoErr, repository.ErrDuplicateEmail) {
+			if tt.repoErr != nil && !errors.Is(tt.repoErr, domain.ErrDuplicateEmail) {
 				if errors.Is(err, service.ErrEmailTaken) {
 					t.Error("db error should not be mapped to ErrEmailTaken")
 				}

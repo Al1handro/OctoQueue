@@ -17,15 +17,22 @@ import (
 
 func TestCreateTask(t *testing.T) {
 	tests := []struct {
-		log     *slog.Logger
 		name    string
+		p       domain.CreateTaskParams
 		st      mocks.TaskRepository
 		want    http.HandlerFunc
-		wantErr bool
+		wantErr error
 	}{
 		{
-			name: "base test",
-			st:   mocks.TaskRepository{},
+			name: "An invalid type is an error.",
+			p: domain.CreateTaskParams{
+				Name:    "Bad task",
+				Type:    "unknown_type",
+				Tags:    []string{"test"},
+				Payload: []byte(`{}`),
+				UserID:  user.ID,
+			},
+			wantErr: domain.ErrNotFound,
 		},
 	} // TODO: add more test cases
 	for _, tt := range tests {

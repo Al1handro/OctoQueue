@@ -45,7 +45,7 @@ func (s *Auth) Register(ctx context.Context, email, password string, role domain
 	}
 
 	if err := s.users.CreateUser(ctx, u); err != nil {
-		if errors.Is(err, repository.ErrDuplicateEmail) {
+		if errors.Is(err, domain.ErrDuplicateEmail) {
 			log.Info("registration failed: email already taken", slog.String("email", email))
 			return nil, ErrEmailTaken
 		}
