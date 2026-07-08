@@ -82,7 +82,7 @@ func RequireRole(role domain.Role) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctxRole, err := GetRole(r.Context())
 			if err != nil {
-				writeUnauthorized(w)
+				writeForbidden(w)
 				return
 			} 
 			if ctxRole != role {
