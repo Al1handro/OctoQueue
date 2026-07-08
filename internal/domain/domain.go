@@ -123,7 +123,7 @@ type CreateTaskParams struct {
 }
 
 type ListTasksParams struct {
-	UserID uuid.UUID
+	UserID *uuid.UUID
 	Status *string
 	Type   *string
 	Tags   []string

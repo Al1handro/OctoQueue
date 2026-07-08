@@ -14,6 +14,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/google/uuid"
 )
 
 // Request / Response types
@@ -195,13 +196,26 @@ func ListTasks(log *slog.Logger, st repository.TaskRepository) http.HandlerFunc 
 			return
 		}
 
-		userId, err := auth.GetUserID(r.Context())
+		role, err := auth.GetRole(r.Context())
+		// logger.Debug("role", slog.String("role", string(role)))
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "missing auth context")
 			return
 		}
 
-		tasks, err := st.ListTasks(r.Context(), domain.ListTasksParams{
+		tasks := []*domain.Task{}
+		var userId *uuid.UUID = nil
+
+		if role != domain.RoleAdmin {
+			stepId, err := auth.GetUserID(r.Context())
+			userId = &stepId
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "missing auth context")
+				return
+			}
+		}
+
+		tasks, err = st.ListTasks(r.Context(), domain.ListTasksParams{
 			UserID: userId,
 			Status: status,
 			Type:   taskType,

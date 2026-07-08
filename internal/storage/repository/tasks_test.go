@@ -302,7 +302,7 @@ func TestStorage_ListTasks(t *testing.T) {
 	t.Run("list all tasks", func(t *testing.T) {
 		got, err := s.ListTasks(ctx, domain.ListTasksParams{
 			Limit:  10,
-			UserID: user.ID,
+			UserID: &user.ID,
 		})
 		if err != nil {
 			t.Fatalf("ListTasks() error = %v", err)
@@ -319,7 +319,7 @@ func TestStorage_ListTasks(t *testing.T) {
 		got, err := s.ListTasks(ctx, domain.ListTasksParams{
 			Type:   &taskType,
 			Limit:  10,
-			UserID: user.ID,
+			UserID: &user.ID,
 		})
 
 		if err != nil {
@@ -341,7 +341,7 @@ func TestStorage_ListTasks(t *testing.T) {
 		got, err := s.ListTasks(ctx, domain.ListTasksParams{
 			Tags:   []string{"email"},
 			Limit:  10,
-			UserID: user.ID,
+			UserID: &user.ID,
 		})
 		if err != nil {
 			t.Fatalf("ListTasks() error = %v", err)
@@ -359,7 +359,7 @@ func TestStorage_ListTasks(t *testing.T) {
 	t.Run("limit works", func(t *testing.T) {
 		got, err := s.ListTasks(ctx, domain.ListTasksParams{
 			Limit:  2,
-			UserID: user.ID,
+			UserID: &user.ID,
 		})
 		if err != nil {
 			t.Fatalf("ListTasks() error = %v", err)
@@ -373,7 +373,7 @@ func TestStorage_ListTasks(t *testing.T) {
 	t.Run("offset works", func(t *testing.T) {
 		first, err := s.ListTasks(ctx, domain.ListTasksParams{
 			Limit:  1,
-			UserID: user.ID,
+			UserID: &user.ID,
 		})
 		if err != nil {
 			t.Fatalf("ListTasks() error = %v", err)
@@ -382,7 +382,7 @@ func TestStorage_ListTasks(t *testing.T) {
 		second, err := s.ListTasks(ctx, domain.ListTasksParams{
 			Limit:  1,
 			Offset: 1,
-			UserID: user.ID,
+			UserID: &user.ID,
 		})
 		if err != nil {
 			t.Fatalf("ListTasks() error = %v", err)
@@ -403,7 +403,7 @@ func TestStorage_ListTasks(t *testing.T) {
 		got, err := s.ListTasks(ctx, domain.ListTasksParams{
 			Type:   &taskType,
 			Limit:  10,
-			UserID: user.ID,
+			UserID: &user.ID,
 		})
 		if err != nil {
 			t.Fatalf("ListTasks() error = %v", err)
