@@ -436,3 +436,192 @@ func TestListTasks_User(t *testing.T) {
 
 	repo.AssertExpectations(t)
 }
+
+func TestListTasks_InvalidLimit(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	repo := new(mocks.TaskRepository)
+
+	handler := handlers.ListTasks(logger, repo)
+	req := httptest.NewRequest(http.MethodGet, "/tasks?limit=abc", nil)
+	ctx := context.WithValue(req.Context(), domain.CtxRole, domain.RoleAdmin)
+	req = req.WithContext(ctx)
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+	repo.AssertNotCalled(t, "ListTasks", mock.Anything, mock.Anything)
+}
+
+func TestListTasks_InvalidOffset(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	repo := new(mocks.TaskRepository)
+
+	handler := handlers.ListTasks(logger, repo)
+	req := httptest.NewRequest(http.MethodGet, "/tasks?offset=xyz", nil)
+	ctx := context.WithValue(req.Context(), domain.CtxRole, domain.RoleAdmin)
+	req = req.WithContext(ctx)
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+	repo.AssertNotCalled(t, "ListTasks", mock.Anything, mock.Anything)
+}
+
+func TestListTasks_NegativeLimit(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	repo := new(mocks.TaskRepository)
+
+	handler := handlers.ListTasks(logger, repo)
+	req := httptest.NewRequest(http.MethodGet, "/tasks?limit=-1", nil)
+	ctx := context.WithValue(req.Context(), domain.CtxRole, domain.RoleAdmin)
+	req = req.WithContext(ctx)
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+	repo.AssertNotCalled(t, "ListTasks", mock.Anything, mock.Anything)
+}
+
+func TestListTasks_NegativeOffset(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	repo := new(mocks.TaskRepository)
+
+	handler := handlers.ListTasks(logger, repo)
+	req := httptest.NewRequest(http.MethodGet, "/tasks?offset=-5", nil)
+	ctx := context.WithValue(req.Context(), domain.CtxRole, domain.RoleAdmin)
+	req = req.WithContext(ctx)
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+	repo.AssertNotCalled(t, "ListTasks", mock.Anything, mock.Anything)
+}
+
+func TestListTasks_MissingRole(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	repo := new(mocks.TaskRepository)
+
+	handler := handlers.ListTasks(logger, repo)
+	req := httptest.NewRequest(http.MethodGet, "/tasks", nil)
+	ctx := context.WithValue(req.Context(), domain.CtxUserID, domain.RoleUser)
+
+	rr := httptest.NewRecorder()
+	req = req.WithContext(ctx)
+
+	handler.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusInternalServerError, rr.Code)
+	repo.AssertNotCalled(t, "ListTasks", mock.Anything, mock.Anything)
+}
+
+func TestListTasks_MissingUserID(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	repo := new(mocks.TaskRepository)
+
+	handler := handlers.ListTasks(logger, repo)
+	req := httptest.NewRequest(http.MethodGet, "/tasks", nil)
+	ctx := context.WithValue(req.Context(), domain.CtxRole, domain.RoleUser)
+
+	req = req.WithContext(ctx)
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusInternalServerError, rr.Code)
+	repo.AssertNotCalled(t, "ListTasks", mock.Anything, mock.Anything)
+}
+
+func TestListTasks_RepositoryError(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	repo := new(mocks.TaskRepository)
+
+	repo.
+		On("ListTasks", mock.Anything, mock.Anything).
+		Return(nil, errors.New("db is down"))
+
+	handler := handlers.ListTasks(logger, repo)
+	req := httptest.NewRequest(http.MethodGet, "/tasks", nil)
+
+	ctx := context.WithValue(req.Context(), domain.CtxRole, domain.RoleAdmin)
+	ctx = context.WithValue(ctx, domain.CtxUserID, uuid.New())
+	req = req.WithContext(ctx)
+
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusInternalServerError, rr.Code)
+	repo.AssertExpectations(t)
+}
+
+func TestListTasks_WithFilters(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	repo := new(mocks.TaskRepository)
+
+	repo.
+		On(
+			"ListTasks",
+			mock.Anything,
+			mock.MatchedBy(func(p domain.ListTasksParams) bool {
+				return p.UserID == nil &&
+					p.Status != nil && *p.Status == "done" &&
+					p.Type != nil && *p.Type == "bug" &&
+					len(p.Tags) == 2 && p.Tags[0] == "backend" && p.Tags[1] == "urgent" &&
+					p.Limit == 10 &&
+					p.Offset == 5
+			}),
+		).
+		Return([]*domain.Task{}, nil)
+
+	handler := handlers.ListTasks(logger, repo)
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/tasks?status=done&type=bug&tags=backend&tags=urgent&limit=10&offset=5",
+		nil,
+	)
+
+	ctx := context.WithValue(req.Context(), domain.CtxRole, domain.RoleAdmin)
+	ctx = context.WithValue(ctx, domain.CtxUserID, uuid.New())
+	req = req.WithContext(ctx)
+
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	repo.AssertExpectations(t)
+}
+
+func TestListTasks_EmptyResult(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	repo := new(mocks.TaskRepository)
+
+	repo.
+		On("ListTasks", mock.Anything, mock.Anything).
+		Return([]*domain.Task{}, nil)
+
+	handler := handlers.ListTasks(logger, repo)
+	req := httptest.NewRequest(http.MethodGet, "/tasks", nil)
+	
+	ctx := context.WithValue(req.Context(), domain.CtxRole, domain.RoleAdmin)
+	ctx = context.WithValue(ctx, domain.CtxUserID, uuid.New())
+	req = req.WithContext(ctx)
+
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &body))
+	tasksField, ok := body["tasks"].([]any)
+	require.True(t, ok)
+	require.Empty(t, tasksField)
+
+	repo.AssertExpectations(t)
+}
