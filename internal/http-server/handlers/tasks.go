@@ -7,6 +7,7 @@ import (
 	"OctoQueue/internal/storage/repository"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -189,35 +190,56 @@ func ListTasks(log *slog.Logger, st repository.TaskRepository) http.HandlerFunc 
 			tags = t
 		}
 
-		limit, _ := strconv.Atoi(q.Get("limit"))
-		offset, _ := strconv.Atoi(q.Get("offset"))
-		//TODO: validate limit and offset. Not string
+		var limit, offset int
 		
+		if lStr := q.Get("limit"); lStr != "" {
+			parsed, err := strconv.Atoi(lStr)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, "INVALID_PARAM", "limit must be an integer")
+				return
+			}
+			limit = parsed
+		}
+
+		if oStr := q.Get("offset"); oStr != "" {
+			parsed, err := strconv.Atoi(oStr)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, "INVALID_PARAM", "offset must be an integer")
+				return
+			}
+			offset = parsed
+		}
+
+		if limit < 0 {
+			writeError(w, http.StatusBadRequest, "INVALID_PARAM", "limit must be >= 0")
+			return
+		}
 		if offset < 0 {
 			writeError(w, http.StatusBadRequest, "INVALID_PARAM", "offset must be >= 0")
 			return
 		}
 
 		role, err := auth.GetRole(r.Context())
-		// logger.Debug("role", slog.String("role", string(role)))
 		if err != nil {
+			err = fmt.Errorf("%s: get role: %w", op, err)
+			logger.Error("failed to get role", sl.Err(err))
 			writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "missing auth context")
 			return
 		}
 
-		tasks := []*domain.Task{}
-		var userId *uuid.UUID = nil
-
+		var userId *uuid.UUID
 		if role != domain.RoleAdmin {
 			stepId, err := auth.GetUserID(r.Context())
 			if err != nil {
+				err = fmt.Errorf("%s: get user id: %w", op, err)
+				logger.Error("failed to get user id", sl.Err(err))
 				writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "missing auth context")
 				return
 			}
 			userId = &stepId
 		}
 
-		tasks, err = st.ListTasks(r.Context(), domain.ListTasksParams{
+		tasks, err := st.ListTasks(r.Context(), domain.ListTasksParams{
 			UserID: userId,
 			Status: status,
 			Type:   taskType,
@@ -226,8 +248,9 @@ func ListTasks(log *slog.Logger, st repository.TaskRepository) http.HandlerFunc 
 			Offset: offset,
 		})
 		if err != nil {
+			err = fmt.Errorf("%s: list tasks: %w", op, err)
 			logger.Error("failed to list tasks", sl.Err(err))
-			writeError(w, http.StatusInternalServerError, "", "failed to list tasks")
+			writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to list tasks")
 			return
 		}
 
