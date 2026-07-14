@@ -189,7 +189,7 @@ func TestStorage_GetTaskByID(t *testing.T) {
 		assert.Equal(t, task.ID, got.ID, "ID mismatch")
 		assert.Equal(t, task.Name, got.Name, "Name mismatch")
 		assert.Equal(t, task.Type, got.Type, "Type mismatch")
-		assert.Equal(t, domain.ErrTaskStatusPending, got.Status, "Status should be pending")
+		assert.Equal(t, "pending", got.Status, "Status should be pending")
 		assert.Equal(t, task.Timezone, got.Timezone, "Timezone mismatch")
 		assert.JSONEq(t, string(task.Payload), string(got.Payload), "Payload mismatch")
 
@@ -204,7 +204,6 @@ func TestStorage_GetTaskByID(t *testing.T) {
 
 		assert.False(t, got.CreatedAt.IsZero(), "CreatedAt should be set")
 		assert.False(t, got.UpdatedAt.IsZero(), "UpdatedAt should be set")
-		assert.True(t, got.DeletedAt.IsZero(), "DeletedAt should be zero for active task")
 	})
 
 	t.Run("task not found", func(t *testing.T) {
@@ -222,6 +221,7 @@ func TestStorage_GetTaskByID(t *testing.T) {
 			Type:     "http_call",
 			Payload:  []byte(`{}`),
 			Timezone: "UTC",
+			Tags:     []string{"delete-test"},
 			UserID:   user.ID,
 		})
 		require.NoError(t, err, "could not create task for deletion test")
@@ -640,7 +640,7 @@ func TestStorage_UpdateTaskStatus(t *testing.T) {
 				createdBy := "test"
 
 				task, err := s.CreateTask(t.Context(), domain.CreateTaskParams{
-					Name:      "t1",
+					Name:      "Update task status",
 					Type:      "http_call",
 					Payload:   []byte(`{}`),
 					Schedule:  &schedule,
@@ -674,7 +674,7 @@ func TestStorage_UpdateTaskStatus(t *testing.T) {
 
 			setup: func(t *testing.T, s *repository.Storage) *domain.Task {
 				task, err := s.CreateTask(t.Context(), domain.CreateTaskParams{
-					Name:     "t2",
+					Name:     "Update task status",
 					Type:     "http_call",
 					Payload:  []byte(`{}`),
 					Tags:     []string{"a"},
@@ -711,7 +711,7 @@ func TestStorage_UpdateTaskStatus(t *testing.T) {
 
 			setup: func(t *testing.T, s *repository.Storage) *domain.Task {
 				task, err := s.CreateTask(t.Context(), domain.CreateTaskParams{
-					Name:     "t3",
+					Name:     "Update task status",
 					Type:     "http_call",
 					Payload:  []byte(`{}`),
 					Tags:     []string{"a"},

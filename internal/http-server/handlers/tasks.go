@@ -336,7 +336,7 @@ func DeleteTask(log *slog.Logger, st repository.TaskWriter) http.HandlerFunc {
 				return
 			}
 			logger.Error("failed to delete task", sl.Err(err), slog.String("task_id", id))
-			writeError(w, http.StatusNotFound, "TASK_NOT_FOUND", "task not found")
+			writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to delete task")
 			return
 		}
 
@@ -358,7 +358,8 @@ func GetTaskExecutions(log *slog.Logger, st repository.ExecutionTracker) http.Ha
 			return
 		}
 
-		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+		limit, err := strconv.Atoi(r.URL.Query().Get("limit"))
+		
 
 		executions, err := st.ListExecutions(r.Context(), id, limit)
 		if err != nil {

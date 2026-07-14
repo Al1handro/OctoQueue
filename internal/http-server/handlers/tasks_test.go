@@ -4,6 +4,7 @@ import (
 	"OctoQueue/internal/domain"
 	"OctoQueue/internal/http-server/handlers"
 	"OctoQueue/internal/storage/repository/mocks"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -625,3 +626,328 @@ func TestListTasks_EmptyResult(t *testing.T) {
 
 	repo.AssertExpectations(t)
 }
+
+func withChiURLParam(req *http.Request, key, value string) *http.Request {
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add(key, value)
+	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+}
+
+func TestUpdateTask_Success(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	repo := new(mocks.TaskWriter)
+
+	updated := &domain.Task{ID: "123", Name: "new name"}
+
+	repo.
+		On(
+			"UpdateTask",
+			mock.Anything,
+			mock.MatchedBy(func(p domain.UpdateTaskParams) bool {
+				return p.ID == "123" &&
+					p.Name != nil && *p.Name == "new name" &&
+					p.Payload == nil &&
+					p.Schedule == nil &&
+					p.Timezone == nil &&
+					p.MaxRetries == nil &&
+					p.Tags == nil &&
+					p.TargetHost == nil
+			}),
+		).
+		Return(updated, nil)
+
+	handler := handlers.UpdateTask(logger, repo)
+
+	body := `{"name":"new name"}`
+	req := httptest.NewRequest(http.MethodPatch, "/tasks/123", bytes.NewBufferString(body))
+	req = withChiURLParam(req, "id", "123")
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	var resp domain.Task
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
+	require.Equal(t, "123", resp.ID)
+	require.Equal(t, "new name", resp.Name)
+
+	repo.AssertExpectations(t)
+}
+
+func TestUpdateTask_MissingID(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	repo := new(mocks.TaskWriter)
+
+	handler := handlers.UpdateTask(logger, repo)
+
+	req := httptest.NewRequest(http.MethodPatch, "/tasks/", bytes.NewBufferString(`{}`))
+	req = withChiURLParam(req, "id", "") // явно пустой id
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+	repo.AssertNotCalled(t, "UpdateTask", mock.Anything, mock.Anything)
+}
+
+func TestUpdateTask_InvalidJSONBody(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	repo := new(mocks.TaskWriter)
+
+	handler := handlers.UpdateTask(logger, repo)
+
+	req := httptest.NewRequest(http.MethodPatch, "/tasks/123", bytes.NewBufferString(`{invalid json`))
+	req = withChiURLParam(req, "id", "123")
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+	repo.AssertNotCalled(t, "UpdateTask", mock.Anything, mock.Anything)
+}
+
+func TestUpdateTask_NotFound(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	repo := new(mocks.TaskWriter)
+
+	repo.
+		On("UpdateTask", mock.Anything, mock.Anything).
+		Return(nil, domain.ErrNotFound)
+
+	handler := handlers.UpdateTask(logger, repo)
+
+	req := httptest.NewRequest(http.MethodPatch, "/tasks/unknown", bytes.NewBufferString(`{"name":"x"}`))
+	req = withChiURLParam(req, "id", "unknown")
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusNotFound, rr.Code)
+	repo.AssertExpectations(t)
+}
+
+func TestUpdateTask_RepositoryError(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	repo := new(mocks.TaskWriter)
+
+	repo.
+		On("UpdateTask", mock.Anything, mock.Anything).
+		Return(nil, errors.New("db is down"))
+
+	handler := handlers.UpdateTask(logger, repo)
+
+	req := httptest.NewRequest(http.MethodPatch, "/tasks/123", bytes.NewBufferString(`{"name":"x"}`))
+	req = withChiURLParam(req, "id", "123")
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusInternalServerError, rr.Code)
+	repo.AssertExpectations(t)
+}
+
+func TestUpdateTask_WithPayload(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	repo := new(mocks.TaskWriter)
+
+	repo.
+		On(
+			"UpdateTask",
+			mock.Anything,
+			mock.MatchedBy(func(p domain.UpdateTaskParams) bool {
+				return p.ID == "123" && string(p.Payload) == `{"key":"value"}`
+			}),
+		).
+		Return(&domain.Task{ID: "123"}, nil)
+
+	handler := handlers.UpdateTask(logger, repo)
+
+	body := `{"payload":{"key":"value"}}`
+	req := httptest.NewRequest(http.MethodPatch, "/tasks/123", bytes.NewBufferString(body))
+	req = withChiURLParam(req, "id", "123")
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	repo.AssertExpectations(t)
+}
+
+func TestUpdateTask_PayloadArray(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	repo := new(mocks.TaskWriter)
+
+	repo.
+		On(
+			"UpdateTask",
+			mock.Anything,
+			mock.MatchedBy(func(p domain.UpdateTaskParams) bool {
+				return p.ID == "123" && string(p.Payload) == `[1,2,3]`
+			}),
+		).
+		Return(&domain.Task{ID: "123"}, nil)
+
+	handler := handlers.UpdateTask(logger, repo)
+
+	body := `{"payload":[1,2,3]}`
+	req := httptest.NewRequest(http.MethodPatch, "/tasks/123", bytes.NewBufferString(body))
+	req = withChiURLParam(req, "id", "123")
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	repo.AssertExpectations(t)
+}
+
+func TestUpdateTask_AllFields(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	repo := new(mocks.TaskWriter)
+
+	repo.
+		On(
+			"UpdateTask",
+			mock.Anything,
+			mock.MatchedBy(func(p domain.UpdateTaskParams) bool {
+				return p.ID == "123" &&
+					p.Name != nil && *p.Name == "renamed" &&
+					p.Schedule != nil && *p.Schedule == "0 * * * *" &&
+					p.Timezone != nil && *p.Timezone == "UTC" &&
+					p.MaxRetries != nil && *p.MaxRetries == 5 &&
+					len(p.Tags) == 2 && p.Tags[0] == "a" && p.Tags[1] == "b" &&
+					p.TargetHost != nil && *p.TargetHost == "host-1"
+			}),
+		).
+		Return(&domain.Task{ID: "123", Name: "renamed"}, nil)
+
+	handler := handlers.UpdateTask(logger, repo)
+
+	body := `{
+		"name": "renamed",
+		"schedule": "0 * * * *",
+		"timezone": "UTC",
+		"max_retries": 5,
+		"tags": ["a", "b"],
+		"target_host": "host-1"
+	}`
+	req := httptest.NewRequest(http.MethodPatch, "/tasks/123", bytes.NewBufferString(body))
+	req = withChiURLParam(req, "id", "123")
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	repo.AssertExpectations(t)
+}
+
+func TestUpdateTask_EmptyBody(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	repo := new(mocks.TaskWriter)
+
+	repo.
+		On(
+			"UpdateTask",
+			mock.Anything,
+			mock.MatchedBy(func(p domain.UpdateTaskParams) bool {
+				return p.ID == "123" &&
+					p.Name == nil &&
+					p.Payload == nil &&
+					p.Schedule == nil &&
+					p.Timezone == nil &&
+					p.MaxRetries == nil &&
+					p.Tags == nil &&
+					p.TargetHost == nil
+			}),
+		).
+		Return(&domain.Task{ID: "123"}, nil)
+
+	handler := handlers.UpdateTask(logger, repo)
+
+	req := httptest.NewRequest(http.MethodPatch, "/tasks/123", bytes.NewBufferString(`{}`))
+	req = withChiURLParam(req, "id", "123")
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	repo.AssertExpectations(t)
+}
+
+func TestDeleteTask_Success(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	repo := new(mocks.TaskWriter)
+
+	repo.
+		On("DeleteTask", mock.Anything, "123").
+		Return(nil)
+
+	handler := handlers.DeleteTask(logger, repo)
+
+	req := httptest.NewRequest(http.MethodDelete, "/tasks/123", nil)
+	req = withChiURLParam(req, "id", "123")
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusNoContent, rr.Code)
+	require.Empty(t, rr.Body.Bytes())
+	repo.AssertExpectations(t)
+}
+
+func TestDeleteTask_MissingID(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	repo := new(mocks.TaskWriter)
+
+	handler := handlers.DeleteTask(logger, repo)
+
+	req := httptest.NewRequest(http.MethodDelete, "/tasks/", nil)
+	req = withChiURLParam(req, "id", "") // явно пустой id
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+	repo.AssertNotCalled(t, "DeleteTask", mock.Anything, mock.Anything)
+}
+
+func TestDeleteTask_NotFound(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	repo := new(mocks.TaskWriter)
+
+	repo.
+		On("DeleteTask", mock.Anything, "unknown").
+		Return(domain.ErrNotFound)
+
+	handler := handlers.DeleteTask(logger, repo)
+
+	req := httptest.NewRequest(http.MethodDelete, "/tasks/unknown", nil)
+	req = withChiURLParam(req, "id", "unknown")
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusNotFound, rr.Code)
+	repo.AssertExpectations(t)
+}
+
+func TestDeleteTask_RepositoryError(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	repo := new(mocks.TaskWriter)
+
+	repo.
+		On("DeleteTask", mock.Anything, "123").
+		Return(errors.New("db is down"))
+
+	handler := handlers.DeleteTask(logger, repo)
+
+	req := httptest.NewRequest(http.MethodDelete, "/tasks/123", nil)
+	req = withChiURLParam(req, "id", "123")
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusInternalServerError, rr.Code)
+	repo.AssertExpectations(t)
+}
+
