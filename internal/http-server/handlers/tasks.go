@@ -359,7 +359,10 @@ func GetTaskExecutions(log *slog.Logger, st repository.ExecutionTracker) http.Ha
 		}
 
 		limit, err := strconv.Atoi(r.URL.Query().Get("limit"))
-		
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid limit")
+			return
+		}
 
 		executions, err := st.ListExecutions(r.Context(), id, limit)
 		if err != nil {

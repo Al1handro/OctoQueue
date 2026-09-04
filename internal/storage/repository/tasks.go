@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -281,7 +282,7 @@ func (s *Storage) FinishExecution(ctx context.Context, p domain.FinishExecutionP
 	return e, nil
 }
 
-func (s *Storage) ListExecutions(ctx context.Context, taskID string, limit int) ([]*domain.TaskExecution, error) {
+func (s *Storage) ListExecutions(ctx context.Context, taskID string, userID uuid.UUID, limit int) ([]*domain.TaskExecution, error) {
 	const op = "storage.repository.ListExecutions"
 
 	if limit == 0 {
@@ -296,10 +297,10 @@ func (s *Storage) ListExecutions(ctx context.Context, taskID string, limit int) 
 			error_code, error_msg, error_trace,
 			worker_id, created_at
 		FROM task_executions
-		WHERE task_id = $1
+		WHERE task_id = $1 and user_id = $2
 		ORDER BY started_at DESC
-		LIMIT $2`,
-		taskID, limit,
+		LIMIT $3`,
+		taskID, userID, limit,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", op, err)
