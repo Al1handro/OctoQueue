@@ -191,7 +191,7 @@ func ListTasks(log *slog.Logger, st repository.TaskRepository) http.HandlerFunc 
 		}
 
 		var limit, offset int
-		
+
 		if lStr := q.Get("limit"); lStr != "" {
 			parsed, err := strconv.Atoi(lStr)
 			if err != nil {
@@ -364,7 +364,13 @@ func GetTaskExecutions(log *slog.Logger, st repository.ExecutionTracker) http.Ha
 			return
 		}
 
-		executions, err := st.ListExecutions(r.Context(), id, limit)
+		userId, err := auth.GetUserID(r.Context())
+		if errors.Is(err, auth.ErrUserIDNotFound) {
+			writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "missing auth context")
+			return
+		}
+
+		executions, err := st.ListExecutions(r.Context(), id, userId, limit)
 		if err != nil {
 			if errors.Is(err, domain.ErrNotFound) {
 				writeError(w, http.StatusNotFound, "TASK_NOT_FOUND", "task not found")
