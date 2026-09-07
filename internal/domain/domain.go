@@ -80,7 +80,7 @@ type Task struct {
 	CreatedAt  time.Time
 	UpdatedAt  time.Time
 	DeletedAt  *time.Time
-	UserID     *string
+	UserID     uuid.UUID
 }
 
 type TaskExecution struct {
@@ -123,12 +123,12 @@ type CreateTaskParams struct {
 }
 
 type ListTasksParams struct {
-	UserID uuid.UUID
 	Status *string
 	Type   *string
 	Tags   []string
 	Limit  int
 	Offset int
+	UserID *uuid.UUID
 }
 
 type UpdateTaskParams struct {

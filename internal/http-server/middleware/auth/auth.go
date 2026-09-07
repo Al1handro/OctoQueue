@@ -80,7 +80,12 @@ func Auth(log *slog.Logger, secret string) func(http.Handler) http.Handler {
 func RequireRole(role domain.Role) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if getRole(r.Context()) != role {
+			ctxRole, err := GetRole(r.Context())
+			if err != nil {
+				writeForbidden(w)
+				return
+			} 
+			if ctxRole != role {
 				writeForbidden(w)
 				return
 			}
@@ -90,6 +95,7 @@ func RequireRole(role domain.Role) func(http.Handler) http.Handler {
 }
 
 var ErrUserIDNotFound = errors.New("user id not found in context")
+var ErrRoleNotFound = errors.New("role not found in context")
 
 func GetUserID(ctx context.Context) (uuid.UUID, error) {
 	id, ok := ctx.Value(domain.CtxUserID).(uuid.UUID)
@@ -99,9 +105,12 @@ func GetUserID(ctx context.Context) (uuid.UUID, error) {
 	return id, nil
 }
 
-func getRole(ctx context.Context) domain.Role {
-	role, _ := ctx.Value(domain.CtxRole).(domain.Role)
-	return role
+func GetRole(ctx context.Context) (domain.Role, error) {
+	role, ok := ctx.Value(domain.CtxRole).(domain.Role)
+	if !ok {
+		return "", ErrRoleNotFound
+	}
+	return role, nil
 }
 
 func writeUnauthorized(w http.ResponseWriter) {

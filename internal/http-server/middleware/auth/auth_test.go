@@ -177,7 +177,7 @@ func TestAuth_Success(t *testing.T) {
 
 	captureHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotUserID, getErr = GetUserID(r.Context())
-		gotRole = getRole(r.Context())
+		gotRole, getErr = GetRole(r.Context())
 		w.WriteHeader(http.StatusOK)
 	})
 
@@ -212,7 +212,7 @@ func TestAuth_MissingRole_StillSucceeds(t *testing.T) {
 
 	var gotRole domain.Role
 	captureHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotRole = getRole(r.Context())
+		gotRole, _ = GetRole(r.Context())
 		w.WriteHeader(http.StatusOK)
 	})
 

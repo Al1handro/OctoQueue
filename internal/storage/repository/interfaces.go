@@ -4,6 +4,8 @@ import (
 	"OctoQueue/internal/domain"
 	"context"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 //go:generate go run github.com/vektra/mockery/v2@latest --name=UserRepository --output=./mocks
@@ -37,7 +39,7 @@ type TaskScheduler interface {
 type ExecutionTracker interface {
 	CreateExecution(ctx context.Context, p domain.CreateExecutionParams) (*domain.TaskExecution, error)
 	FinishExecution(ctx context.Context, p domain.FinishExecutionParams) (*domain.TaskExecution, error)
-	ListExecutions(ctx context.Context, taskID string, limit int) ([]*domain.TaskExecution, error)
+	ListExecutions(ctx context.Context, taskID string, userID uuid.UUID, limit int) ([]*domain.TaskExecution, error)
 }
 
 //go:generate go run github.com/vektra/mockery/v2@latest --name=LockManager --output=./mocks

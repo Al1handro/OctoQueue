@@ -7,6 +7,7 @@ import (
 	"OctoQueue/internal/storage/repository"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/google/uuid"
 )
 
 // Request / Response types
@@ -188,17 +190,53 @@ func ListTasks(log *slog.Logger, st repository.TaskRepository) http.HandlerFunc 
 			tags = t
 		}
 
-		limit, _ := strconv.Atoi(q.Get("limit"))
-		offset, _ := strconv.Atoi(q.Get("offset"))
+		var limit, offset int
+
+		if lStr := q.Get("limit"); lStr != "" {
+			parsed, err := strconv.Atoi(lStr)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, "INVALID_PARAM", "limit must be an integer")
+				return
+			}
+			limit = parsed
+		}
+
+		if oStr := q.Get("offset"); oStr != "" {
+			parsed, err := strconv.Atoi(oStr)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, "INVALID_PARAM", "offset must be an integer")
+				return
+			}
+			offset = parsed
+		}
+
+		if limit < 0 {
+			writeError(w, http.StatusBadRequest, "INVALID_PARAM", "limit must be >= 0")
+			return
+		}
 		if offset < 0 {
 			writeError(w, http.StatusBadRequest, "INVALID_PARAM", "offset must be >= 0")
 			return
 		}
 
-		userId, err := auth.GetUserID(r.Context())
+		role, err := auth.GetRole(r.Context())
 		if err != nil {
+			err = fmt.Errorf("%s: get role: %w", op, err)
+			logger.Error("failed to get role", sl.Err(err))
 			writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "missing auth context")
 			return
+		}
+
+		var userId *uuid.UUID
+		if role != domain.RoleAdmin {
+			stepId, err := auth.GetUserID(r.Context())
+			if err != nil {
+				err = fmt.Errorf("%s: get user id: %w", op, err)
+				logger.Error("failed to get user id", sl.Err(err))
+				writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "missing auth context")
+				return
+			}
+			userId = &stepId
 		}
 
 		tasks, err := st.ListTasks(r.Context(), domain.ListTasksParams{
@@ -210,8 +248,9 @@ func ListTasks(log *slog.Logger, st repository.TaskRepository) http.HandlerFunc 
 			Offset: offset,
 		})
 		if err != nil {
+			err = fmt.Errorf("%s: list tasks: %w", op, err)
 			logger.Error("failed to list tasks", sl.Err(err))
-			writeError(w, http.StatusInternalServerError, "", "failed to list tasks")
+			writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to list tasks")
 			return
 		}
 
@@ -297,7 +336,7 @@ func DeleteTask(log *slog.Logger, st repository.TaskWriter) http.HandlerFunc {
 				return
 			}
 			logger.Error("failed to delete task", sl.Err(err), slog.String("task_id", id))
-			writeError(w, http.StatusNotFound, "TASK_NOT_FOUND", "task not found")
+			writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to delete task")
 			return
 		}
 
@@ -319,9 +358,19 @@ func GetTaskExecutions(log *slog.Logger, st repository.ExecutionTracker) http.Ha
 			return
 		}
 
-		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+		limit, err := strconv.Atoi(r.URL.Query().Get("limit"))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "INVALID_REQUEST", "invalid limit")
+			return
+		}
 
-		executions, err := st.ListExecutions(r.Context(), id, limit)
+		userId, err := auth.GetUserID(r.Context())
+		if errors.Is(err, auth.ErrUserIDNotFound) {
+			writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "missing auth context")
+			return
+		}
+
+		executions, err := st.ListExecutions(r.Context(), id, userId, limit)
 		if err != nil {
 			if errors.Is(err, domain.ErrNotFound) {
 				writeError(w, http.StatusNotFound, "TASK_NOT_FOUND", "task not found")
