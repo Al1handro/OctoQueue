@@ -139,6 +139,33 @@ func TestCreateTask_EmptyName(t *testing.T) {
 	repo.AssertNotCalled(t, "CreateTask")
 }
 
+func TestCreateTask_EmptyType(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	repo := new(mocks.TaskRepository)
+
+	body := `{
+		"name":"backup"
+	}`
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/tasks",
+		strings.NewReader(body),
+	)
+
+	req.Header.Set("Content-Type", "application/json")
+
+	rr := httptest.NewRecorder()
+
+	handler := handlers.CreateTask(logger, repo)
+	handler.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusBadRequest, rr.Code)
+
+	repo.AssertNotCalled(t, "CreateTask")
+}
+
 func TestCreateTask_InvalidRunAt(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
