@@ -153,6 +153,7 @@ func TestStorage_CreateTask(t *testing.T) {
 			p: domain.CreateTaskParams{
 				Name:       "Retry task",
 				Type:       "http_call",
+				Tags:       []string{"retry", "test"},
 				Payload:    []byte(`{"url":"https://example.com"}`),
 				Schedule:   &schedule,
 				Timezone:   "UTC",
@@ -303,7 +304,7 @@ func TestStorage_CreateTask(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := s.CreateTask(context.Background(), tt.p)
-			
+
 			if tt.wantErr {
 				require.Error(t, err, "CreateTask() expected error")
 				if tt.errMsg != "" {
@@ -311,7 +312,7 @@ func TestStorage_CreateTask(t *testing.T) {
 				}
 				return
 			}
-			
+
 			require.NoError(t, err, "CreateTask() unexpected error")
 			require.NotNil(t, got)
 
@@ -348,7 +349,7 @@ func TestStorage_CreateTask_Duplicate(t *testing.T) {
 		Timezone: "UTC",
 		UserID:   user.ID,
 	})
-	
+
 	if err == nil {
 		// Если дубликаты разрешены
 		trackTask(t, s, task2)
@@ -450,7 +451,7 @@ func TestStorage_CreateTask_Concurrent(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			
+
 			task, err := s.CreateTask(context.Background(), domain.CreateTaskParams{
 				Name:     fmt.Sprintf("Concurrent task %d", i),
 				Type:     "shell",
@@ -458,7 +459,7 @@ func TestStorage_CreateTask_Concurrent(t *testing.T) {
 				Timezone: "UTC",
 				UserID:   user.ID,
 			})
-			
+
 			tasks[i] = task
 			errors[i] = err
 		}(i)

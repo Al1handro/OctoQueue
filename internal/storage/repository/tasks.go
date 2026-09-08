@@ -2,17 +2,183 @@ package repository
 
 import (
 	"OctoQueue/internal/domain"
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
+
+var (
+	ErrInvalidPayload      = errors.New("invalid payload")
+	ErrInvalidUTF8         = errors.New("invalid UTF-8 encoding")
+	ErrContainsNullBytes   = errors.New("payload contains null bytes")
+	ErrDuplicateTask       = errors.New("task already exists")
+	ErrForeignKeyViolation = errors.New("foreign key violation")
+	ErrNotNullViolation    = errors.New("not null violation")
+)
+
+type ValidationError struct {
+	Field   string
+	Message string
+	Err     error
+}
+
+func (e *ValidationError) Error() string {
+	if e.Field != "" {
+		return fmt.Sprintf("validation failed for %s: %s", e.Field, e.Message)
+	}
+	return e.Message
+}
+
+func (e *ValidationError) Unwrap() error {
+	return e.Err
+}
+
+// Быстрая валидация критических полей
+func validateCriticalFields(p domain.CreateTaskParams) error {
+	// Проверка обязательных полей
+	if strings.TrimSpace(p.Name) == "" {
+		return &ValidationError{
+			Field:   "name",
+			Message: "cannot be empty",
+			Err:     ErrNotNullViolation,
+		}
+	}
+
+	if strings.TrimSpace(p.Type) == "" {
+		return &ValidationError{
+			Field:   "type",
+			Message: "cannot be empty",
+			Err:     ErrNotNullViolation,
+		}
+	}
+
+	if p.UserID == uuid.Nil {
+		return &ValidationError{
+			Field:   "user_id",
+			Message: "cannot be empty",
+			Err:     ErrForeignKeyViolation,
+		}
+	}
+
+	return nil
+}
+
+func validateAndNormalizePayload(p *domain.CreateTaskParams) error {
+	if p.Payload == nil {
+		return &ValidationError{
+			Field:   "payload",
+			Message: "cannot be nil",
+			Err:     ErrInvalidPayload,
+		}
+	}
+
+	if bytes.Contains(p.Payload, []byte{0}) {
+		return &ValidationError{
+			Field:   "payload",
+			Message: "contains null bytes (0x00)",
+			Err:     ErrContainsNullBytes,
+		}
+	}
+
+	if !utf8.Valid(p.Payload) {
+		return &ValidationError{
+			Field:   "payload",
+			Message: "invalid UTF-8 encoding",
+			Err:     ErrInvalidUTF8,
+		}
+	}
+
+	if !json.Valid(p.Payload) {
+		return &ValidationError{
+			Field:   "payload",
+			Message: "invalid JSON format",
+			Err:     ErrInvalidPayload,
+		}
+	}
+
+	var normalized bytes.Buffer
+	if err := json.Compact(&normalized, p.Payload); err == nil {
+		p.Payload = normalized.Bytes()
+	}
+
+	return nil
+}
+
+// Проверка бизнес-правил (требует доступа к БД)
+func validateBusinessRules(ctx context.Context, s *Storage, p domain.CreateTaskParams) error {
+	// Проверка существования пользователя
+	var exists bool
+	err := s.pool.QueryRow(ctx,
+		"SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)", p.UserID,
+	).Scan(&exists)
+
+	if err != nil {
+		return fmt.Errorf("check user existence: %w", err)
+	}
+
+	if !exists {
+		return &ValidationError{
+			Field:   "user_id",
+			Message: "user does not exist",
+			Err:     ErrForeignKeyViolation,
+		}
+	}
+
+	// Другие бизнес-проверки...
+
+	return nil
+}
+
+func mapDBError(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		switch pgErr.Code {
+		case "22021": // invalid byte sequence
+			return fmt.Errorf("%w: invalid byte sequence (SQLSTATE %s)",
+				ErrInvalidUTF8, pgErr.Code)
+
+		case "23505": // unique violation
+			return fmt.Errorf("%w: %s", ErrDuplicateTask, pgErr.Detail)
+
+		case "23503": // foreign key violation
+			return fmt.Errorf("%w: %s", ErrForeignKeyViolation, pgErr.Detail)
+
+		default:
+			return fmt.Errorf("database error (SQLSTATE %s): %s",
+				pgErr.Code, pgErr.Message)
+		}
+	}
+
+	return err
+}
 
 func (s *Storage) CreateTask(ctx context.Context, p domain.CreateTaskParams) (*domain.Task, error) {
 	const op = "storage.repository.CreateTask"
+
+    if err := validateCriticalFields(p); err != nil {
+        return nil, fmt.Errorf("%s: %w", op, err)
+    }
+    
+    if err := validateAndNormalizePayload(&p); err != nil {
+        return nil, fmt.Errorf("%s: %w", op, err)
+    }
+    
+    if err := validateBusinessRules(ctx, s, p); err != nil {
+        return nil, fmt.Errorf("%s: %w", op, err)
+    }
 
 	row := s.pool.QueryRow(ctx, `
 		INSERT INTO tasks (
@@ -34,12 +200,12 @@ func (s *Storage) CreateTask(ctx context.Context, p domain.CreateTaskParams) (*d
 		p.NextRunAt, p.MaxRetries, p.Tags, p.CreatedBy, p.TargetHost, p.UserID,
 	)
 
-	t, err := scanTask(row, op)
+	task, err := scanTask(row, op)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", op, err)
+		return nil, fmt.Errorf("%s: %w", op, mapDBError(err))
 	}
 
-	return t, nil
+	return task, nil
 }
 
 func (s *Storage) GetTaskByID(ctx context.Context, id string) (*domain.Task, error) {

@@ -23,24 +23,25 @@ const (
 )
 
 var (
-	ErrNotFound        = errors.New("not found")
-	ErrUserNotFound    = fmt.Errorf("user: %w", ErrNotFound)
-	ErrTaskNotFound    = fmt.Errorf("task: %w", ErrNotFound)
+	ErrNotFound     = errors.New("not found")
+	ErrUserNotFound = fmt.Errorf("user: %w", ErrNotFound)
+	ErrTaskNotFound = fmt.Errorf("task: %w", ErrNotFound)
 
 	ErrInvalidTaskName = errors.New("invalid task name")
 	ErrInvalidTaskType = errors.New("invalid task type")
 
-	ErrForbidden       = errors.New("forbidden")
-	ErrInvalidRequest  = errors.New("invalid request")
-	ErrUnauthorized    = errors.New("unauthorized")
+	ErrForbidden         = errors.New("forbidden")
+	ErrInvalidRequest    = errors.New("invalid request")
+	ErrUnauthorized      = errors.New("unauthorized")
+	ErrUserAlreadyExists = errors.New("user already exists")
 
 	ErrDuplicateEmail = errors.New("email already taken")
-	ErrDuplicateTask   = errors.New("duplicate task")
+	ErrDuplicateTask  = errors.New("duplicate task")
 
-	ErrTaskStatusPending  = errors.New("task status: pending")
-	TaskStatusRunning  = errors.New("task status: running")
-	TaskStatusSuccess  = errors.New("task status: success")
-	TaskStatusFailed   = errors.New("task status: failed")
+	ErrTaskStatusPending = errors.New("task status: pending")
+	TaskStatusRunning    = errors.New("task status: running")
+	TaskStatusSuccess    = errors.New("task status: success")
+	TaskStatusFailed     = errors.New("task status: failed")
 )
 
 var ValidTaskTypes = map[string]bool{

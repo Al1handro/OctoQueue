@@ -21,6 +21,8 @@ func NewAuthHandler(svc service.AuthService, log *slog.Logger) *AuthHandler {
 	return &AuthHandler{svc: svc, log: log}
 }
 
+// Register POST /register
+
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	const op = "handlers.AuthHandler.Register"
 	log := h.log.With(slog.String("op", op), slog.String("request_id", middleware.GetReqID(r.Context())))
@@ -64,6 +66,8 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// Login POST /login
+
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	const op = "handlers.AuthHandler.Login"
 	log := h.log.With(slog.String("op", op), slog.String("request_id", middleware.GetReqID(r.Context())))
@@ -80,6 +84,9 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	token, err := h.svc.Login(r.Context(), req.Email, req.Password)
+
+	log.Info("Debug message", slog.String("email", req.Email), slog.Any("error", err))
+
 	if err != nil {
 		if errors.Is(err, domain.ErrUnauthorized) {
 			log.Warn("login failed: invalid credentials", slog.String("email", req.Email))
