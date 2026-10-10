@@ -74,13 +74,13 @@ func main() {
 	router := chi.NewRouter()
 
 	authMW := auth.Auth(log, cfg.JWTSecret)
-	
+
 	router.Use(middleware.RequestID)
 	router.Use(middleware.RealIP)
 	router.Use(logger.New(log))
 	router.Use(middleware.Recoverer)
 	router.Use(middleware.URLFormat)
-	
+
 	authH := handlers.NewAuthHandler(authSvc, log)
 	router.Post("/register", authH.Register)
 	router.Post("/login", authH.Login)
