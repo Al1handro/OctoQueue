@@ -21,8 +21,6 @@ func NewAuthHandler(svc service.AuthService, log *slog.Logger) *AuthHandler {
 	return &AuthHandler{svc: svc, log: log}
 }
 
-// Register POST /register
-
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	const op = "handlers.AuthHandler.Register"
 	log := h.log.With(slog.String("op", op), slog.String("request_id", middleware.GetReqID(r.Context())))
@@ -49,8 +47,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, service.ErrEmailTaken):
 			writeError(w, http.StatusConflict, "EMAIL_TAKEN", "email already registered")
 		default:
-			log.Error("failed to register user", sl.Err(err))
-			writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to register user")
+			writeServiceError(w, log, err, "failed to register user")
 		}
 		return
 	}
@@ -65,8 +62,6 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		},
 	})
 }
-
-// Login POST /login
 
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	const op = "handlers.AuthHandler.Login"
@@ -84,9 +79,6 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	token, err := h.svc.Login(r.Context(), req.Email, req.Password)
-
-	log.Info("Debug message", slog.String("email", req.Email), slog.Any("error", err))
-
 	if err != nil {
 		if errors.Is(err, domain.ErrUnauthorized) {
 			log.Warn("login failed: invalid credentials", slog.String("email", req.Email))
@@ -94,8 +86,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		
-		log.Error("login failed: internal server error", sl.Err(err), slog.String("email", req.Email))
-		writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to login")
+		writeServiceError(w, log, err, "failed to login", slog.String("email", req.Email))
 		return
 	}
 

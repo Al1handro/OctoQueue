@@ -128,8 +128,7 @@ func CreateTask(log *slog.Logger, st repository.TaskRepository) http.HandlerFunc
 			UserID:     userId,
 		})
 		if err != nil {
-			logger.Error("failed to create task", sl.Err(err))
-			writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to create task")
+			writeServiceError(w, logger, err, "failed to create task")
 			return
 		}
 
@@ -157,8 +156,7 @@ func GetTask(log *slog.Logger, st repository.TaskRepository) http.HandlerFunc {
 				writeError(w, http.StatusNotFound, "TASK_NOT_FOUND", "task not found")
 				return
 			}
-			logger.Error("failed to get task", sl.Err(err), slog.String("task_id", id))
-			writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to get task")
+			writeServiceError(w, logger, err, "failed to get task", slog.String("task_id", id))
 			return
 		}
 
@@ -248,9 +246,7 @@ func ListTasks(log *slog.Logger, st repository.TaskRepository) http.HandlerFunc 
 			Offset: offset,
 		})
 		if err != nil {
-			err = fmt.Errorf("%s: list tasks: %w", op, err)
-			logger.Error("failed to list tasks", sl.Err(err))
-			writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to list tasks")
+			writeServiceError(w, logger, fmt.Errorf("%s: list tasks: %w", op, err), "failed to list tasks")
 			return
 		}
 
@@ -307,8 +303,7 @@ func UpdateTask(log *slog.Logger, st repository.TaskWriter) http.HandlerFunc {
 				writeError(w, http.StatusNotFound, "TASK_NOT_FOUND", "task not found")
 				return
 			}
-			logger.Error("failed to update task", sl.Err(err), slog.String("task_id", id))
-			writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to update task")
+			writeServiceError(w, logger, err, "failed to update task", slog.String("task_id", id))
 			return
 		}
 
@@ -335,8 +330,7 @@ func DeleteTask(log *slog.Logger, st repository.TaskWriter) http.HandlerFunc {
 				writeError(w, http.StatusNotFound, "TASK_NOT_FOUND", "task not found")
 				return
 			}
-			logger.Error("failed to delete task", sl.Err(err), slog.String("task_id", id))
-			writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to delete task")
+			writeServiceError(w, logger, err, "failed to delete task", slog.String("task_id", id))
 			return
 		}
 
@@ -376,8 +370,7 @@ func GetTaskExecutions(log *slog.Logger, st repository.ExecutionTracker) http.Ha
 				writeError(w, http.StatusNotFound, "TASK_NOT_FOUND", "task not found")
 				return
 			}
-			logger.Error("failed to get executions", sl.Err(err), slog.String("task_id", id))
-			writeError(w, http.StatusInternalServerError, "INTERNAL_ERROR", "failed to get executions")
+			writeServiceError(w, logger, err, "failed to get executions", slog.String("task_id", id))
 			return
 		}
 

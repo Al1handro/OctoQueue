@@ -634,7 +634,7 @@ func TestListTasks_EmptyResult(t *testing.T) {
 
 	handler := handlers.ListTasks(logger, repo)
 	req := httptest.NewRequest(http.MethodGet, "/tasks", nil)
-	
+
 	ctx := context.WithValue(req.Context(), domain.CtxRole, domain.RoleAdmin)
 	ctx = context.WithValue(ctx, domain.CtxUserID, uuid.New())
 	req = req.WithContext(ctx)
@@ -977,4 +977,3 @@ func TestDeleteTask_RepositoryError(t *testing.T) {
 	require.Equal(t, http.StatusInternalServerError, rr.Code)
 	repo.AssertExpectations(t)
 }
-
