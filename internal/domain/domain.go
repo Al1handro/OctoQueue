@@ -2,17 +2,16 @@ package domain
 
 import (
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 )
 
-type СontextKey string
+type ContextKey string
 
 const (
-	CtxUserID СontextKey = "user_id"
-	CtxRole   СontextKey = "role"
+	CtxUserID ContextKey = "user_id"
+	CtxRole   ContextKey = "role"
 )
 
 type Role string
@@ -22,22 +21,9 @@ const (
 	RoleUser  Role = "user"
 )
 
+// Статусы выполнения. Объявлены как error-значения исторически; не путать
+// с ошибками из errors.go.
 var (
-	ErrNotFound     = errors.New("not found")
-	ErrUserNotFound = fmt.Errorf("user: %w", ErrNotFound)
-	ErrTaskNotFound = fmt.Errorf("task: %w", ErrNotFound)
-
-	ErrInvalidTaskName = errors.New("invalid task name")
-	ErrInvalidTaskType = errors.New("invalid task type")
-
-	ErrForbidden         = errors.New("forbidden")
-	ErrInvalidRequest    = errors.New("invalid request")
-	ErrUnauthorized      = errors.New("unauthorized")
-	ErrUserAlreadyExists = errors.New("user already exists")
-
-	ErrDuplicateEmail = errors.New("email already taken")
-	ErrDuplicateTask  = errors.New("duplicate task")
-
 	ErrTaskStatusPending = errors.New("task status: pending")
 	TaskStatusRunning    = errors.New("task status: running")
 	TaskStatusSuccess    = errors.New("task status: success")
