@@ -97,13 +97,11 @@ func TestStorage_CreateTask(t *testing.T) {
 	targetHost := "example.com"
 
 	tests := []struct {
-		name string
-		p    domain.CreateTaskParams
-		want func(t *testing.T, got *domain.Task)
-
-		wantErr   bool
-		wantErrIs error
-		errMsg    string
+		name    string
+		p       domain.CreateTaskParams
+		want    func(t *testing.T, got *domain.Task)
+		wantErr bool
+		wantIs  error // ожидаемая доменная ошибка (errors.Is), а не текст ошибки Postgres
 	}{
 		{
 			name: "successful creation of http_call task",
@@ -155,7 +153,6 @@ func TestStorage_CreateTask(t *testing.T) {
 			p: domain.CreateTaskParams{
 				Name:       "Retry task",
 				Type:       "http_call",
-				Tags:       []string{"retry", "test"},
 				Payload:    []byte(`{"url":"https://example.com"}`),
 				Schedule:   &schedule,
 				Timezone:   "UTC",
@@ -175,7 +172,6 @@ func TestStorage_CreateTask(t *testing.T) {
 			p: domain.CreateTaskParams{
 				Name:     "Simple task",
 				Type:     "shell",
-				Tags:     []string{},
 				Payload:  []byte(`{"command":"echo hello"}`),
 				Timezone: "UTC",
 				UserID:   user.ID,
@@ -187,6 +183,7 @@ func TestStorage_CreateTask(t *testing.T) {
 				assert.Nil(t, got.TargetHost, "expected nil target_host")
 				assert.Nil(t, got.CreatedBy, "expected nil created_by")
 				assert.Equal(t, "pending", got.Status)
+				assert.NotNil(t, got.NextRunAt, "expected NextRunAt to be set for one-time task")
 			},
 		},
 		{
@@ -194,7 +191,6 @@ func TestStorage_CreateTask(t *testing.T) {
 			p: domain.CreateTaskParams{
 				Name:     "Timezone task",
 				Type:     "http_call",
-				Tags:     []string{"timezone"},
 				Payload:  []byte(`{"url":"https://example.com"}`),
 				Schedule: &schedule,
 				Timezone: "America/New_York",
@@ -227,7 +223,6 @@ func TestStorage_CreateTask(t *testing.T) {
 			p: domain.CreateTaskParams{
 				Name:     "Minimal task",
 				Type:     "shell",
-				Tags:     []string{"minimal"},
 				Payload:  []byte(`{"command":"pwd"}`),
 				Timezone: "UTC",
 				UserID:   user.ID,
@@ -252,9 +247,8 @@ func TestStorage_CreateTask(t *testing.T) {
 				Timezone: "UTC",
 				UserID:   uuid.Nil,
 			},
-			wantErr:   true,
-			wantErrIs: repository.ErrForeignKeyViolation,
-			errMsg:    "user_id",
+			wantErr: true,
+			wantIs:  domain.ErrUserNotFound,
 		},
 		{
 			name: "task with empty name",
@@ -265,9 +259,8 @@ func TestStorage_CreateTask(t *testing.T) {
 				Timezone: "UTC",
 				UserID:   user.ID,
 			},
-			wantErr:   true,
-			wantErrIs: repository.ErrNotNullViolation,
-			errMsg:    "name",
+			wantErr: true,
+			wantIs:  domain.ErrInvalidTaskName,
 		},
 		{
 			name: "task with empty type",
@@ -278,9 +271,8 @@ func TestStorage_CreateTask(t *testing.T) {
 				Timezone: "UTC",
 				UserID:   user.ID,
 			},
-			wantErr:   true,
-			wantErrIs: repository.ErrNotNullViolation,
-			errMsg:    "type",
+			wantErr: true,
+			wantIs:  domain.ErrInvalidTaskType,
 		},
 		{
 			name: "task with nil payload",
@@ -291,39 +283,63 @@ func TestStorage_CreateTask(t *testing.T) {
 				Timezone: "UTC",
 				UserID:   user.ID,
 			},
-			wantErr:   true,
-			wantErrIs: repository.ErrInvalidPayload,
-			errMsg:    "payload",
+			wantErr: true,
+			wantIs:  domain.ErrRequiredField,
 		},
 		{
 			name: "task with very long name",
 			p: domain.CreateTaskParams{
-				Name:     strings.Repeat("a", 300),
+				Name:     strings.Repeat("x", 256),
 				Type:     "shell",
 				Payload:  []byte(`{"command":"test"}`),
 				Timezone: "UTC",
 				UserID:   user.ID,
 			},
 			wantErr: true,
-			errMsg:  "value too long",
+			wantIs:  domain.ErrInvalidTaskName,
+		},
+		{
+			// отсекается проактивно, до запроса к БД
+			name: "task with unsupported type",
+			p: domain.CreateTaskParams{
+				Name:     "Pigeon task",
+				Type:     "carrier_pigeon",
+				Payload:  []byte(`{}`),
+				Timezone: "UTC",
+				UserID:   user.ID,
+			},
+			wantErr: true,
+			wantIs:  domain.ErrInvalidTaskType,
+		},
+		{
+			// проактивных проверок на cron нет: ловится реактивно по 23514 / chk_schedule
+			name: "task with invalid schedule",
+			p: domain.CreateTaskParams{
+				Name:     "Bad schedule",
+				Type:     "shell",
+				Payload:  []byte(`{}`),
+				Schedule: ptr("every day"),
+				Timezone: "UTC",
+				UserID:   user.ID,
+			},
+			wantErr: true,
+			wantIs:  domain.ErrInvalidSchedule,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := s.CreateTask(context.Background(), tt.p)
-
+			
 			if tt.wantErr {
 				require.Error(t, err, "CreateTask() expected error")
-				if tt.wantErrIs != nil {
-					assert.ErrorIs(t, err, tt.wantErrIs)
+				if tt.wantIs != nil {
+					assert.ErrorIs(t, err, tt.wantIs)
 				}
-				if tt.errMsg != "" {
-					assert.Contains(t, err.Error(), tt.errMsg, "unexpected error message")
-				}
+				assert.Nil(t, got)
 				return
 			}
-
+			
 			require.NoError(t, err, "CreateTask() unexpected error")
 			require.NotNil(t, got)
 
@@ -360,7 +376,7 @@ func TestStorage_CreateTask_Duplicate(t *testing.T) {
 		Timezone: "UTC",
 		UserID:   user.ID,
 	})
-
+	
 	if err == nil {
 		// Если дубликаты разрешены
 		trackTask(t, s, task2)
@@ -462,7 +478,7 @@ func TestStorage_CreateTask_Concurrent(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-
+			
 			task, err := s.CreateTask(context.Background(), domain.CreateTaskParams{
 				Name:     fmt.Sprintf("Concurrent task %d", i),
 				Type:     "shell",
@@ -470,7 +486,7 @@ func TestStorage_CreateTask_Concurrent(t *testing.T) {
 				Timezone: "UTC",
 				UserID:   user.ID,
 			})
-
+			
 			tasks[i] = task
 			errors[i] = err
 		}(i)
@@ -575,6 +591,8 @@ func TestStorage_GetTaskByID(t *testing.T) {
 		got, err := s.GetTaskByID(context.Background(), "not-a-valid-uuid")
 		require.Error(t, err, "GetTaskByID() should return error for invalid UUID")
 		assert.Nil(t, got, "GetTaskByID() should return nil for invalid UUID")
+		assert.ErrorIs(t, err, domain.ErrInvalidID)
+		assert.NotErrorIs(t, err, domain.ErrNotFound, "invalid id must not be reported as not found")
 	})
 }
 
@@ -947,6 +965,11 @@ func TestStorage_DeleteTask(t *testing.T) {
 			task := tt.setup(t, s)
 			trackTask(t, s, task)
 
+			// NOTE: DeleteTask on a non-existent ID does not itself error
+			// (it's a soft delete affecting 0 rows) — the failure surfaces
+			// on the follow-up GetTaskByID lookup below. This mirrors the
+			// original test's behavior; don't "fix" it without checking
+			// the repository implementation first.
 			gotErr := s.DeleteTask(context.Background(), task.ID)
 			if gotErr != nil {
 				require.True(t, tt.wantErr, "DeleteTask() failed: %v", gotErr)
@@ -961,4 +984,45 @@ func TestStorage_DeleteTask(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Регрессия: запрос раньше фильтровал по несуществующей колонке task_executions.user_id
+// (SQLSTATE 42703); владелец теперь определяется через tasks.user_id.
+func TestStorage_ListExecutions(t *testing.T) {
+	s := newTestStorage(t)
+	owner := createTestUser(t, s)
+	stranger := createTestUser(t, s)
+	ctx := context.Background()
+
+	task, err := s.CreateTask(ctx, domain.CreateTaskParams{
+		Name:     "task with executions",
+		Type:     "shell",
+		Payload:  []byte(`{"command":"echo hi"}`),
+		Timezone: "UTC",
+		UserID:   owner.ID,
+	})
+	require.NoError(t, err)
+	trackTask(t, s, task)
+
+	for attempt := 1; attempt <= 2; attempt++ {
+		_, err := s.CreateExecution(ctx, domain.CreateExecutionParams{TaskID: task.ID, Attempt: attempt})
+		require.NoError(t, err)
+	}
+
+	t.Run("owner sees executions", func(t *testing.T) {
+		got, err := s.ListExecutions(ctx, task.ID, owner.ID, 10)
+		require.NoError(t, err)
+		assert.Len(t, got, 2)
+	})
+
+	t.Run("another user sees nothing", func(t *testing.T) {
+		got, err := s.ListExecutions(ctx, task.ID, stranger.ID, 10)
+		require.NoError(t, err)
+		assert.Empty(t, got)
+	})
+
+	t.Run("invalid task id", func(t *testing.T) {
+		_, err := s.ListExecutions(ctx, "not-a-uuid", owner.ID, 10)
+		assert.ErrorIs(t, err, domain.ErrInvalidID)
+	})
 }

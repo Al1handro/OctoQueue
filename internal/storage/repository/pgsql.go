@@ -23,22 +23,22 @@ func (s *Storage) Close() {
 }
 
 func NewStorage(ctx context.Context, dsn string, log *slog.Logger) (*Storage, error) {
-    const op = "storage.pgsql.NewStorage"
+	const op = "storage.pgsql.NewStorage"
 
-    log.Info("Connecting to PostgreSQL database", "dsn", dsn)
+	log.Info("Connecting to PostgreSQL database", "dsn", dsn)
 
-    ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
-    defer cancel()
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 
-    pool, err := pgxpool.New(ctx, dsn)
-    if err != nil {
-        return nil, fmt.Errorf("%s: connect: %w", op, err)
-    }
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		return nil, fmt.Errorf("%s: connect: %w", op, err)
+	}
 
-    if err = pool.Ping(ctx); err != nil {
-        return nil, fmt.Errorf("%s: ping: %w", op, err)
-    }
+	if err = pool.Ping(ctx); err != nil {
+		return nil, fmt.Errorf("%s: ping: %w", op, err)
+	}
 
-    log.Info("Successfully connected to PostgreSQL database")
-    return &Storage{pool: pool}, nil
+	log.Info("Successfully connected to PostgreSQL database")
+	return &Storage{pool: pool}, nil
 }

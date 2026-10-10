@@ -8,7 +8,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -40,11 +39,8 @@ func (s *pgUserRepo) CreateUser(ctx context.Context, user *domain.User) error {
 	).Scan(&id)
 
 	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			return domain.ErrDuplicateEmail
-		}
-		return fmt.Errorf("%s: creating user: %w", op, err)
+		// 23505 по users_email_key → ErrDuplicateEmail, остальное — см. mapError.
+		return fmt.Errorf("%s: creating user: %w", op, mapError(err))
 	}
 
 	user.ID = id
@@ -53,6 +49,10 @@ func (s *pgUserRepo) CreateUser(ctx context.Context, user *domain.User) error {
 
 func (s *pgUserRepo) GetUser(ctx context.Context, id string) (*domain.User, error) {
 	const op = "storage.repository.GetUser"
+
+	if err := checkID(id); err != nil {
+		return nil, wrap(op, err)
+	}
 	var u domain.User
 	err := s.pool.QueryRow(ctx, `
 		SELECT id, email, password_hash, role, created_at
@@ -63,7 +63,7 @@ func (s *pgUserRepo) GetUser(ctx context.Context, id string) (*domain.User, erro
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, fmt.Errorf("%s: %w", op, domain.ErrUserNotFound)
 		}
-		return nil, fmt.Errorf("%s: select: %w", op, err)
+		return nil, fmt.Errorf("%s: select: %w", op, mapError(err))
 	}
 	return &u, nil
 }
@@ -81,7 +81,7 @@ func (s *pgUserRepo) GetByEmail(ctx context.Context, email string) (*domain.User
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, fmt.Errorf("%s: %w", op, domain.ErrUserNotFound)
 		}
-		return nil, fmt.Errorf("%s: select: %w", op, err)
+		return nil, fmt.Errorf("%s: select: %w", op, mapError(err))
 	}
 	return &u, nil
 }
